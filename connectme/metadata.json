@@ -1,0 +1,8 @@
+{
+  "name": "ConnectMe",
+  "description": "A real-time communication app inspired by the IMO redesign, featuring P2P video calls and local-first chat storage.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}

@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #1A6FD4;
+  --color-secondary: #4A9EE8;
+  --color-surface: #F4F7FB;
+  --color-text-primary: #1A1A2E;
+  --color-text-secondary: #7A8AA0;
+  --color-online: #4CAF50;
+  --color-nav-bg: #1A6FD4;
+
+  @keyframes spin-slow {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  --animate-spin-slow: spin-slow 3s linear infinite;
+}
+
+@layer base {
+  body {
+    @apply bg-white text-text-primary font-sans;
+  }
+}
