@@ -1,0 +1,51 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #534AB7;
+  --color-secondary: #7F77DD;
+  --color-dark: #3C3489;
+  --color-surface: #EEEDFE;
+  --color-text-primary: #1A1A2E;
+  --color-text-secondary: #7A8AA0;
+  --color-online: #4CAF50;
+  --color-nav-bg: #534AB7;
+
+  @keyframes spin-slow {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  --animate-spin-slow: spin-slow 3s linear infinite;
+}
+
+/* html5-qrcode scanner styles */
+#qr-reader {
+  border: none !important;
+}
+#qr-reader__scan_region {
+  background: #000;
+  border-radius: 1.5rem;
+  overflow: hidden;
+}
+#qr-reader__dashboard {
+  padding: 1rem !important;
+  background: white;
+  border-radius: 0 0 1.5rem 1.5rem;
+}
+#qr-reader__dashboard_section_csr button {
+  background: #534AB7 !important;
+  color: white !important;
+  border: none !important;
+  padding: 0.5rem 1rem !important;
+  border-radius: 0.5rem !important;
+  font-weight: bold !important;
+  cursor: pointer;
+}
+#qr-reader__status_span {
+  display: none !important;
+}
+
+@layer base {
+  body {
+    @apply bg-white text-text-primary font-sans;
+  }
+}

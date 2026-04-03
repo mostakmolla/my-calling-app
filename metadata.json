@@ -1,0 +1,11 @@
+{
+  "name": "TikRing",
+  "short_name": "TikRing",
+  "description": "Connect. Ring. Anywhere.",
+  "theme_color": "#534AB7",
+  "background_color": "#3C3489",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
