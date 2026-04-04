@@ -33,7 +33,7 @@ export default function App() {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [isIncomingCall, setIsIncomingCall] = useState(false);
-  const [callerId, setCallerId] = useState<string | null>(null);
+  const [callerId, setCallerId] = useState<string | null>(null); // This will store the caller's phone number
   const [cameraFacingMode, setCameraFacingMode] = useState<'user' | 'environment'>('user');
   const peerConnection = useRef<RTCPeerConnection | null>(null);
   const currentScreenRef = useRef(currentScreen);
@@ -85,13 +85,26 @@ export default function App() {
       });
 
       newSocket.on('offer', async ({ from, offer }) => {
-      setCallerId(from);
-      setIsIncomingCall(true);
-      setCurrentScreen('call');
-      
-      peerConnection.current = new RTCPeerConnection(STUN_SERVERS);
-      await peerConnection.current.setRemoteDescription(new RTCSessionDescription(offer));
-    });
+        // 'from' is the sender's phone number or socket ID
+        setCallerId(from);
+        setIsIncomingCall(true);
+        
+        // Try to find the chat to get the caller's name
+        const chat = await getChat(from);
+        if (chat) {
+          setSelectedChatName(chat.name);
+          setSelectedChatAvatar(chat.avatar);
+          setSelectedChatId(from);
+        } else {
+          setSelectedChatName(from);
+          setSelectedChatId(from);
+        }
+        
+        setCurrentScreen('call');
+        
+        peerConnection.current = new RTCPeerConnection(STUN_SERVERS);
+        await peerConnection.current.setRemoteDescription(new RTCSessionDescription(offer));
+      });
 
     newSocket.on('answer', async ({ answer }) => {
       if (peerConnection.current) {
@@ -178,16 +191,16 @@ export default function App() {
       };
 
       peerConnection.current.onicecandidate = (event) => {
-        if (event.candidate && socket) {
-          socket.emit('ice_candidate', { to: 'broadcast_or_target', candidate: event.candidate });
+        if (event.candidate && socket && id) {
+          socket.emit('ice_candidate', { to: id, candidate: event.candidate });
         }
       };
 
       const offer = await peerConnection.current.createOffer();
       await peerConnection.current.setLocalDescription(offer);
       
-      if (socket) {
-        socket.emit('offer', { to: 'target_id', offer });
+      if (socket && id) {
+        socket.emit('offer', { to: id, offer });
       }
     } catch (err) {
       console.error('Error starting call:', err);
@@ -263,11 +276,18 @@ export default function App() {
     setCurrentScreen('main');
   };
 
-  const toggleScreenShare = async (isSharing: boolean): Promise<boolean> => {
+  const toggleScreenShare = async (isSharing: boolean): Promise<{ success: boolean; error?: string }> => {
     try {
+      if (isSharing && (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia)) {
+        return { success: false, error: 'NotSupported' };
+      }
+
       let newStream: MediaStream;
       if (isSharing) {
-        newStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        newStream = await navigator.mediaDevices.getDisplayMedia({ 
+          video: true,
+          audio: false // Explicitly disable audio for better mobile compatibility
+        });
       } else {
         newStream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: cameraFacingMode },
@@ -291,39 +311,80 @@ export default function App() {
       if (isSharing) {
         videoTrack.onended = () => toggleScreenShare(false);
       }
-      return true;
+      return { success: true };
     } catch (err: any) {
+      console.error('Error toggling screen share:', err);
       if (err.name === 'NotAllowedError') {
-        console.warn('Screen share permission denied by user.');
-      } else {
-        console.error('Error toggling screen share:', err);
+        return { success: false, error: 'PermissionDenied' };
       }
-      return false;
+      if (err.name === 'NotFoundError' || err.name === 'NotSupportedError') {
+        return { success: false, error: 'NotSupported' };
+      }
+      return { success: false, error: 'Unknown' };
     }
   };
 
   const switchCamera = async () => {
     if (!localStream) return;
     
-    const newFacingMode = cameraFacingMode === 'user' ? 'environment' : 'user';
     try {
+      // Check if the device has multiple cameras
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = devices.filter(device => device.kind === 'videoinput');
+      
+      if (videoDevices.length < 2) {
+        console.warn('Only one camera detected. Camera switching may not be possible.');
+        // We still try to toggle facing mode as some browsers might handle it differently
+      }
+
+      const newFacingMode = cameraFacingMode === 'user' ? 'environment' : 'user';
+      
       const newStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: newFacingMode },
+        video: { 
+          facingMode: { exact: newFacingMode } 
+        },
         audio: true
+      }).catch(async () => {
+        // Fallback if 'exact' fails
+        return await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: newFacingMode },
+          audio: true
+        });
       });
 
       const videoTrack = newStream.getVideoTracks()[0];
-      const sender = peerConnection.current?.getSenders().find(s => s.track?.kind === 'video');
+      const audioTrack = newStream.getAudioTracks()[0];
       
-      if (sender && videoTrack) {
-        await sender.replaceTrack(videoTrack);
+      // Update peer connection
+      if (peerConnection.current) {
+        const senders = peerConnection.current.getSenders();
+        const videoSender = senders.find(s => s.track?.kind === 'video');
+        const audioSender = senders.find(s => s.track?.kind === 'audio');
+        
+        if (videoSender && videoTrack) {
+          await videoSender.replaceTrack(videoTrack);
+        }
+        if (audioSender && audioTrack) {
+          await audioSender.replaceTrack(audioTrack);
+        }
       }
 
-      localStream.getVideoTracks().forEach(track => track.stop());
+      // Stop old tracks
+      localStream.getTracks().forEach(track => track.stop());
+      
       setLocalStream(newStream);
       setCameraFacingMode(newFacingMode);
+      
+      console.log(`Switched to ${newFacingMode} camera`);
     } catch (err) {
       console.error('Error switching camera:', err);
+      // Try to fallback to any camera if specific facing mode fails
+      try {
+        const fallbackStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        setLocalStream(fallbackStream);
+      } catch (fallbackErr) {
+        console.error('Fallback camera access failed:', fallbackErr);
+      }
     }
   };
 
@@ -332,6 +393,7 @@ export default function App() {
       case 'chats':
         return (
           <HomeScreen 
+            socket={socket}
             onChatSelect={async (id) => {
               setSelectedChatId(id);
               const chat = await getChat(id);

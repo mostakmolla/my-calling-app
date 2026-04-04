@@ -27,6 +27,8 @@ async function startServer() {
       if (phone) {
         phoneToSocket.set(phone, socket.id);
         socket.join(phone); // Join a room named after the phone number
+        // Broadcast that this user is now online
+        io.emit("user_status_change", { phone, isOnline: true });
       }
       io.emit("user_list", Array.from(users.values()));
     });
@@ -35,6 +37,8 @@ async function startServer() {
       const user = users.get(socket.id);
       if (user && user.phone) {
         phoneToSocket.delete(user.phone);
+        // Broadcast that this user is now offline
+        io.emit("user_status_change", { phone: user.phone, isOnline: false });
       }
       users.delete(socket.id);
       io.emit("user_list", Array.from(users.values()));
@@ -66,6 +70,16 @@ async function startServer() {
     socket.on("send_message", ({ to, message }) => {
       const sender = users.get(socket.id);
       socket.to(to).emit("receive_message", { from: sender?.phone || socket.id, message });
+    });
+
+    socket.on("typing", ({ to }) => {
+      const sender = users.get(socket.id);
+      socket.to(to).emit("typing", { from: sender?.phone || socket.id });
+    });
+
+    socket.on("stop_typing", ({ to }) => {
+      const sender = users.get(socket.id);
+      socket.to(to).emit("stop_typing", { from: sender?.phone || socket.id });
     });
   });
 

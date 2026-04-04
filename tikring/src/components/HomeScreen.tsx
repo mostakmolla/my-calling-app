@@ -8,9 +8,10 @@ interface HomeScreenProps {
   onChatSelect: (chatId: string) => void;
   onCallSelect: (chatId: string, type: 'video' | 'audio') => void;
   onProfileOpen: () => void;
+  socket: any;
 }
 
-export default function HomeScreen({ onChatSelect, onCallSelect, onProfileOpen }: HomeScreenProps) {
+export default function HomeScreen({ onChatSelect, onCallSelect, onProfileOpen, socket }: HomeScreenProps) {
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeTab, setActiveTab] = useState('chats');
   const [userProfile, setUserProfile] = useState<any>(null);
@@ -84,25 +85,48 @@ export default function HomeScreen({ onChatSelect, onCallSelect, onProfileOpen }
     }
   }, [currentStoryIndex, storyProgress, selectedStory, isStoryViewerOpen]);
 
+  const fetchData = async () => {
+    const [storedChats, profile, story] = await Promise.all([
+      getChats(),
+      getProfile(),
+      getMyStory()
+    ]);
+
+    setUserProfile(profile);
+    setMyStory(story);
+
+    if (storedChats.length === 0) {
+      setChats([]);
+    } else {
+      setChats(storedChats);
+    }
+  };
+
   useEffect(() => {
-    const fetchData = async () => {
-      const [storedChats, profile, story] = await Promise.all([
-        getChats(),
-        getProfile(),
-        getMyStory()
-      ]);
-
-      setUserProfile(profile);
-      setMyStory(story);
-
-      if (storedChats.length === 0) {
-        setChats([]);
-      } else {
-        setChats(storedChats);
-      }
-    };
     fetchData();
   }, []);
+
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleUpdate = () => {
+      fetchData();
+    };
+
+    const handleStatusChange = (data: { phone: string, isOnline: boolean }) => {
+      setChats(prev => prev.map(chat => 
+        chat.phone === data.phone ? { ...chat, isOnline: data.isOnline } : chat
+      ));
+    };
+
+    socket.on('receive_message', handleUpdate);
+    socket.on('user_status_change', handleStatusChange);
+
+    return () => {
+      socket.off('receive_message', handleUpdate);
+      socket.off('user_status_change', handleStatusChange);
+    };
+  }, [socket]);
 
   const handleAddStory = async () => {
     const newStoryItem = {

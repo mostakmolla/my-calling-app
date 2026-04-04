@@ -11,7 +11,7 @@ interface VideoCallProps {
   isIncoming?: boolean;
   onAccept?: () => void;
   onSwitchCamera?: () => void;
-  onToggleScreenShare?: (isSharing: boolean) => Promise<boolean>;
+  onToggleScreenShare?: (isSharing: boolean) => Promise<{ success: boolean; error?: string }>;
 }
 
 export default function VideoCall({ 
@@ -81,11 +81,17 @@ export default function VideoCall({
   const toggleScreenShare = async () => {
     const nextSharing = !isScreenSharing;
     if (onToggleScreenShare) {
-      const success = await onToggleScreenShare(nextSharing);
-      if (success) {
+      const result = await onToggleScreenShare(nextSharing);
+      if (result.success) {
         setIsScreenSharing(nextSharing);
       } else {
-        setError("Screen share permission was denied. To share your screen, please select a window or screen in the browser's dialog and click 'Share'.");
+        if (result.error === 'NotSupported') {
+          setError("Screen sharing is not supported on this browser or device. Mobile browsers often restrict this feature.");
+        } else if (result.error === 'PermissionDenied') {
+          setError("Screen share permission was denied. Please allow access in the browser's dialog.");
+        } else {
+          setError("Failed to start screen sharing. Please try again.");
+        }
         setTimeout(() => setError(null), 5000);
       }
     }
@@ -102,10 +108,45 @@ export default function VideoCall({
     setShowBackgroundMenu(false);
   };
 
+  const handleSwitchCamera = () => {
+    if (onSwitchCamera) {
+      onSwitchCamera();
+      setError("Switching camera...");
+      setTimeout(() => setError(null), 2000);
+    }
+  };
+
   const takeScreenshot = () => {
     setShowScreenshotFlash(true);
     setTimeout(() => setShowScreenshotFlash(false), 200);
-    // Simulate sending screenshot
+    
+    try {
+      const video = remoteVideoRef.current || localVideoRef.current;
+      if (!video) return;
+
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      // Draw the video frame to the canvas
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      // Convert to data URL and download
+      const dataUrl = canvas.toDataURL('image/png');
+      const link = document.createElement('a');
+      link.href = dataUrl;
+      link.download = `TikRing-Screenshot-${new Date().getTime()}.png`;
+      link.click();
+
+      setError("Screenshot saved to your device!");
+      setTimeout(() => setError(null), 3000);
+    } catch (err) {
+      console.error('Failed to take screenshot:', err);
+      setError("Failed to save screenshot.");
+      setTimeout(() => setError(null), 3000);
+    }
   };
 
   return (
@@ -114,11 +155,14 @@ export default function VideoCall({
       <AnimatePresence>
         {error && (
           <motion.div 
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="absolute top-32 left-6 right-6 bg-red-500/90 backdrop-blur-md text-white p-4 rounded-2xl text-center text-sm font-bold z-[60] shadow-2xl border border-white/20"
+            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            className="absolute top-24 left-4 right-4 bg-red-500/95 backdrop-blur-xl text-white p-4 rounded-2xl text-center text-sm font-bold z-[70] shadow-2xl border border-white/20 flex flex-col items-center gap-2"
           >
+            <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+              <X className="w-4 h-4" />
+            </div>
             {error}
           </motion.div>
         )}
@@ -360,7 +404,7 @@ export default function VideoCall({
 
                   <button 
                     onClick={() => {
-                      onSwitchCamera?.();
+                      handleSwitchCamera();
                       setShowToolsMenu(false);
                     }}
                     className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-white/70 hover:bg-white/10 transition-colors"

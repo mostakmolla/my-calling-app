@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Phone, Video, MoreVertical, Smile, Paperclip, Camera, Send, Mic, X, Play, Pause, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Phone, Video, MoreVertical, Smile, Paperclip, Camera, Send, Mic, X, Play, Pause, ExternalLink, MapPin, Volume2, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/src/lib/utils';
 import { Message, saveMessage, getMessages, getChat, Chat } from '@/src/lib/db';
 import { Socket } from 'socket.io-client';
+import { GoogleGenAI, Modality } from "@google/genai";
+
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 interface ChatScreenProps {
   chatId: string;
@@ -18,9 +21,11 @@ export default function ChatScreen({ chatId, socket, onBack, onCall, onViewProfi
   const [chat, setChat] = useState<Chat | null>(null);
   const [inputText, setInputText] = useState('');
   const [isRecording, setIsRecording] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [playingMessageId, setPlayingMessageId] = useState<string | null>(null);
+  const [isGeneratingVoice, setIsGeneratingVoice] = useState<string | null>(null);
   const [audioCurrentTime, setAudioCurrentTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -66,10 +71,43 @@ export default function ChatScreen({ chatId, socket, onBack, onCall, onViewProfi
     };
 
     socket.on('receive_message', handleReceiveMessage);
+    
+    socket.on('typing', (data: { from: string }) => {
+      if (data.from === chat?.phone) {
+        setIsTyping(true);
+      }
+    });
+
+    socket.on('stop_typing', (data: { from: string }) => {
+      if (data.from === chat?.phone) {
+        setIsTyping(false);
+      }
+    });
+
     return () => {
       socket.off('receive_message', handleReceiveMessage);
+      socket.off('typing');
+      socket.off('stop_typing');
     };
   }, [socket, chatId, chat]);
+
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setInputText(e.target.value);
+    
+    if (socket && chat?.phone) {
+      socket.emit('typing', { to: chat.phone });
+      
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+      
+      typingTimeoutRef.current = setTimeout(() => {
+        socket.emit('stop_typing', { to: chat.phone });
+      }, 2000);
+    }
+  };
 
   const handleSendMessage = async () => {
     if (!inputText.trim()) return;
@@ -159,7 +197,18 @@ export default function ChatScreen({ chatId, socket, onBack, onCall, onViewProfi
     if (!isRecording) {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const mediaRecorder = new MediaRecorder(stream);
+        
+        // Mobile compatibility: try different mime types
+        const mimeTypes = ['audio/webm', 'audio/mp4', 'audio/aac', 'audio/ogg'];
+        let selectedMimeType = '';
+        for (const type of mimeTypes) {
+          if (MediaRecorder.isTypeSupported(type)) {
+            selectedMimeType = type;
+            break;
+          }
+        }
+
+        const mediaRecorder = new MediaRecorder(stream, selectedMimeType ? { mimeType: selectedMimeType } : undefined);
         mediaRecorderRef.current = mediaRecorder;
         audioChunksRef.current = [];
         recordingDurationRef.current = 0;
@@ -172,7 +221,7 @@ export default function ChatScreen({ chatId, socket, onBack, onCall, onViewProfi
         };
 
         mediaRecorder.onstop = async () => {
-          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+          const audioBlob = new Blob(audioChunksRef.current, { type: selectedMimeType || 'audio/webm' });
           const reader = new FileReader();
           reader.readAsDataURL(audioBlob);
           reader.onloadend = async () => {
@@ -231,6 +280,71 @@ export default function ChatScreen({ chatId, socket, onBack, onCall, onViewProfi
         clearInterval(recordingIntervalRef.current);
       }
     }
+  };
+
+  const generateVoice = async (messageId: string, text: string) => {
+    if (isGeneratingVoice) return;
+    setIsGeneratingVoice(messageId);
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash-preview-tts",
+        contents: [{ parts: [{ text: `Say clearly: ${text}` }] }],
+        config: {
+          responseModalities: [Modality.AUDIO],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: 'Kore' },
+            },
+          },
+        },
+      });
+
+      const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      if (base64Audio) {
+        const audioUrl = `data:audio/wav;base64,${base64Audio}`;
+        handlePlayAudio(messageId, audioUrl);
+      }
+    } catch (err) {
+      console.error('Error generating voice:', err);
+      const toast = document.createElement('div');
+      toast.className = 'fixed bottom-24 left-1/2 -translate-x-1/2 bg-red-500 text-white px-6 py-3 rounded-full shadow-2xl z-[100] font-bold';
+      toast.innerText = "Voice generation failed!";
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    } finally {
+      setIsGeneratingVoice(null);
+    }
+  };
+
+  const handleShareLocation = () => {
+    if (!navigator.geolocation) {
+      alert("Geolocation is not supported by your browser");
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(async (position) => {
+      const { latitude, longitude } = position.coords;
+      const mapsUrl = `https://www.google.com/maps?q=${latitude},${longitude}`;
+      
+      const newMessage: Message = {
+        id: Date.now().toString(),
+        chatId,
+        senderId: 'me',
+        text: `📍 My Location: ${mapsUrl}`,
+        timestamp: Date.now(),
+        type: 'text',
+        status: 'sent',
+      };
+
+      await saveMessage(newMessage);
+      if (socket && chat?.phone) {
+        socket.emit('send_message', { to: chat.phone, message: newMessage });
+      }
+      setMessages(prev => [...prev, newMessage]);
+    }, (err) => {
+      console.error('Error getting location:', err);
+      alert("Unable to retrieve your location");
+    });
   };
 
   const handlePlayAudio = (messageId: string, url: string) => {
@@ -332,7 +446,9 @@ export default function ChatScreen({ chatId, socket, onBack, onCall, onViewProfi
           </div>
           <div>
             <h3 className="text-sm font-bold text-text-primary">{chat?.name || 'Loading...'}</h3>
-            <span className="text-[10px] text-online font-medium">{chat?.isOnline ? 'Online' : 'Offline'}</span>
+            <span className="text-[10px] text-online font-medium">
+              {isTyping ? 'Typing...' : (chat?.isOnline ? 'Online' : 'Offline')}
+            </span>
           </div>
         </div>
         <div className="flex items-center gap-4">
@@ -357,12 +473,12 @@ export default function ChatScreen({ chatId, socket, onBack, onCall, onViewProfi
           <div 
             key={msg.id}
             className={cn(
-              "flex flex-col max-w-[80%]",
-              msg.senderId === 'me' ? "ml-auto items-end" : "mr-auto items-start"
+              "flex flex-col",
+              msg.senderId === 'me' ? "ml-auto items-end max-w-[70%]" : "mr-auto items-start max-w-[80%]"
             )}
           >
             <div className={cn(
-              "rounded-2xl text-sm shadow-sm overflow-hidden",
+              "rounded-2xl text-sm shadow-sm overflow-hidden relative group",
               msg.senderId === 'me' 
                 ? "bg-primary text-white rounded-tr-none" 
                 : "bg-white text-text-primary rounded-tl-none",
@@ -378,16 +494,16 @@ export default function ChatScreen({ chatId, socket, onBack, onCall, onViewProfi
                 />
               )}
               {msg.type === 'voice' && (
-                <div className="flex flex-col gap-1 p-3 min-w-[240px]">
+                <div className="flex flex-col gap-1 p-3 min-w-[200px]">
                   <div className="flex items-center gap-3">
                     <button 
                       onClick={() => msg.mediaUrl && handlePlayAudio(msg.id, msg.mediaUrl)}
-                      className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center hover:bg-white/30 transition-colors shrink-0"
+                      className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center hover:bg-white/30 transition-colors shrink-0"
                     >
                       {playingMessageId === msg.id && !audioRef.current?.paused ? (
-                        <Pause className="w-5 h-5 fill-current" />
+                        <Pause className="w-4 h-4 fill-current" />
                       ) : (
-                        <Play className="w-5 h-5 fill-current ml-1" />
+                        <Play className="w-4 h-4 fill-current ml-0.5" />
                       )}
                     </button>
                     
@@ -401,7 +517,7 @@ export default function ChatScreen({ chatId, socket, onBack, onCall, onViewProfi
                         className="w-full h-1 bg-white/20 rounded-full appearance-none cursor-pointer accent-white"
                         onClick={(e) => e.stopPropagation()}
                       />
-                      <div className="flex justify-between text-[9px] opacity-80">
+                      <div className="flex justify-between text-[8px] opacity-80">
                         <span>{playingMessageId === msg.id ? formatTime(audioCurrentTime) : '0:00'}</span>
                         <span>
                           {playingMessageId === msg.id 
@@ -414,8 +530,21 @@ export default function ChatScreen({ chatId, socket, onBack, onCall, onViewProfi
                 </div>
               )}
               {msg.type !== 'image' && msg.type !== 'voice' && (
-                <div className="px-4 py-2">
-                  {renderMessageText(msg.text)}
+                <div className="px-3 py-2 flex items-start gap-2">
+                  <div className="flex-1">
+                    {renderMessageText(msg.text)}
+                  </div>
+                  <button 
+                    onClick={() => generateVoice(msg.id, msg.text)}
+                    className="mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                    disabled={isGeneratingVoice === msg.id}
+                  >
+                    {isGeneratingVoice === msg.id ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Volume2 className={cn("w-3.5 h-3.5", msg.senderId === 'me' ? "text-white/70" : "text-primary/70")} />
+                    )}
+                  </button>
                 </div>
               )}
               {msg.type === 'image' && (
@@ -467,7 +596,7 @@ export default function ChatScreen({ chatId, socket, onBack, onCall, onViewProfi
             <input 
               type="text" 
               value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
+              onChange={handleInputChange}
               onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
               placeholder={isRecording ? `Recording... ${Math.floor(recordingDuration / 60)}:${(recordingDuration % 60).toString().padStart(2, '0')}` : "Write a message..."}
               className={cn(
@@ -476,6 +605,13 @@ export default function ChatScreen({ chatId, socket, onBack, onCall, onViewProfi
               )}
               disabled={isRecording}
             />
+            <button 
+              onClick={handleShareLocation}
+              className="text-text-secondary hover:text-primary transition-colors"
+              title="Share Location"
+            >
+              <MapPin className="w-5 h-5" />
+            </button>
             <button 
               onClick={() => fileInputRef.current?.click()}
               className="text-text-secondary hover:text-primary transition-colors"
