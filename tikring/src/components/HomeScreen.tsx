@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Menu, Camera, MessageSquare, Compass, Users, X, Upload, Play, Pause, Volume2, VolumeX, Music } from 'lucide-react';
+import { Search, Menu, Camera, MessageSquare, Compass, Users, X, Upload, Play, Pause, Volume2, VolumeX, Music, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/src/lib/utils';
 import { getChats, Chat, getProfile, getMyStory, saveMyStory, addContact } from '@/src/lib/db';
@@ -215,10 +215,22 @@ export default function HomeScreen({ onChatSelect, onCallSelect, onProfileOpen }
             </div>
             <div className="ml-4 flex-1 min-w-0">
               <div className="flex justify-between items-baseline">
-                <h3 className="text-[16px] font-bold text-text-primary truncate">{chat.name}</h3>
-                <span className="text-[12px] text-text-secondary">
-                  {new Date(chat.lastTimestamp || 0).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </span>
+                <div className="flex items-center gap-1 min-w-0">
+                  <h3 className="text-[16px] font-bold text-text-primary truncate">{chat.name}</h3>
+                  {chat.isVerified && (
+                    <CheckCircle2 className="w-3.5 h-3.5 text-primary fill-primary/10 flex-shrink-0" />
+                  )}
+                </div>
+                <div className="flex flex-col items-end gap-1">
+                  <span className="text-[12px] text-text-secondary">
+                    {new Date(chat.lastTimestamp || 0).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                  {chat.unreadCount > 0 && (
+                    <div className="bg-primary text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] flex items-center justify-center">
+                      {chat.unreadCount}
+                    </div>
+                  )}
+                </div>
               </div>
               <p className={cn(
                 "text-[14px] truncate mt-0.5",

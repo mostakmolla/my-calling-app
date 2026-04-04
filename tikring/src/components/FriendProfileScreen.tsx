@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Chat, deleteContact, blockContact, updateContactStatus, addContact } from '@/src/lib/db';
-import { ArrowLeft, MoreVertical, MessageSquare, Phone, Video, Grid, Film, Image as ImageIcon, PlayCircle, Heart, Share2, MessageCircle, Play, Send, Copy, CheckCircle2, X, UserPlus2, ShieldAlert, Trash2, Clock } from 'lucide-react';
+import { Chat, deleteContact, blockContact, updateContactStatus, addContact, getProfile } from '@/src/lib/db';
+import { ArrowLeft, MoreVertical, MessageSquare, Phone, Video, Grid, Film, Image as ImageIcon, PlayCircle, Heart, Share2, MessageCircle, Play, Send, Copy, CheckCircle2, X, UserPlus2, ShieldAlert, Trash2, Clock, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/src/lib/utils';
+import { Socket } from 'socket.io-client';
 
 const REACTION_EMOJIS = [
   { label: 'like', emoji: '👍' },
@@ -19,11 +20,12 @@ interface FriendProfileScreenProps {
   onBack: () => void;
   onMessage: () => void;
   onCall: (type: 'video' | 'audio') => void;
+  socket: Socket | null;
 }
 
 type TabType = 'all' | 'reels' | 'photos' | 'videos';
 
-export default function FriendProfileScreen({ friend, onBack, onMessage, onCall }: FriendProfileScreenProps) {
+export default function FriendProfileScreen({ friend, onBack, onMessage, onCall, socket }: FriendProfileScreenProps) {
   const [activeTab, setActiveTab] = useState<TabType>('all');
   const [selectedMedia, setSelectedMedia] = useState<any>(null);
   const [showReactions, setShowReactions] = useState(false);
@@ -60,9 +62,26 @@ export default function FriendProfileScreen({ friend, onBack, onMessage, onCall 
   };
 
   const handleSendRequest = async () => {
+    const profile = await getProfile();
     const updatedFriend = { ...friend, status: 'pending' as const };
     await addContact(updatedFriend);
     setFriendStatus('pending');
+
+    if (socket && friend.phone) {
+      socket.emit('friend_request', {
+        toPhone: friend.phone,
+        fromUser: {
+          name: profile?.name || 'TikRing User',
+          phone: profile?.phone,
+          avatar: profile?.avatar || 'https://picsum.photos/seed/tikring/100'
+        }
+      });
+    }
+  };
+
+  const handleAcceptRequest = async () => {
+    await updateContactStatus(friend.id, 'friend');
+    setFriendStatus('friend');
   };
 
   const handleShare = () => {
@@ -268,7 +287,12 @@ export default function FriendProfileScreen({ friend, onBack, onMessage, onCall 
               <div className="absolute bottom-1 right-1 w-6 h-6 bg-online rounded-full border-4 border-white" />
             )}
           </div>
-          <h2 className="mt-4 text-2xl font-bold text-text-primary">{friend.name}</h2>
+          <div className="flex items-center gap-2 mt-4">
+            <h2 className="text-2xl font-bold text-text-primary">{friend.name}</h2>
+            {friend.isVerified && (
+              <CheckCircle2 className="w-5 h-5 text-primary fill-primary/10" />
+            )}
+          </div>
           <p className="text-text-secondary text-sm font-medium">{friend.phone || 'No phone number'}</p>
           
           {friendStatus === 'pending' && (
@@ -285,7 +309,26 @@ export default function FriendProfileScreen({ friend, onBack, onMessage, onCall 
             </div>
           )}
 
-          {friendStatus !== 'friend' && friendStatus !== 'pending' && friendStatus !== 'blocked' && (
+          {friendStatus === 'request_received' && (
+            <div className="mt-4 flex gap-3">
+              <button 
+                onClick={handleAcceptRequest}
+                className="bg-primary text-white px-6 py-2 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-primary/20"
+              >
+                <Check className="w-4 h-4" />
+                Accept
+              </button>
+              <button 
+                onClick={handleDelete}
+                className="bg-surface text-text-secondary px-6 py-2 rounded-xl font-bold flex items-center gap-2"
+              >
+                <X className="w-4 h-4" />
+                Decline
+              </button>
+            </div>
+          )}
+
+          {friendStatus !== 'friend' && friendStatus !== 'pending' && friendStatus !== 'blocked' && friendStatus !== 'request_received' && (
             <button 
               onClick={handleSendRequest}
               className="mt-4 bg-primary text-white px-8 py-2.5 rounded-2xl font-bold shadow-lg shadow-primary/20 flex items-center gap-2 active:scale-95 transition-transform"

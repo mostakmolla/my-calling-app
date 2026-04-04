@@ -16,20 +16,37 @@ async function startServer() {
   const PORT = 3000;
 
   // Signaling and Presence
-  const users = new Map();
+  const users = new Map(); // socket.id -> { username, id, phone }
+  const phoneToSocket = new Map(); // phone -> socket.id
 
   io.on("connection", (socket) => {
     console.log("User connected:", socket.id);
 
-    socket.on("register", (username) => {
-      users.set(socket.id, { username, id: socket.id });
+    socket.on("register", ({ username, phone }) => {
+      users.set(socket.id, { username, id: socket.id, phone });
+      if (phone) {
+        phoneToSocket.set(phone, socket.id);
+        socket.join(phone); // Join a room named after the phone number
+      }
       io.emit("user_list", Array.from(users.values()));
     });
 
     socket.on("disconnect", () => {
+      const user = users.get(socket.id);
+      if (user && user.phone) {
+        phoneToSocket.delete(user.phone);
+      }
       users.delete(socket.id);
       io.emit("user_list", Array.from(users.values()));
       console.log("User disconnected:", socket.id);
+    });
+
+    // Friend Request Signaling
+    socket.on("friend_request", ({ toPhone, fromUser }) => {
+      const targetSocketId = phoneToSocket.get(toPhone);
+      if (targetSocketId) {
+        socket.to(targetSocketId).emit("friend_request_received", fromUser);
+      }
     });
 
     // WebRTC Signaling
@@ -47,7 +64,8 @@ async function startServer() {
 
     // Chat signaling (for real-time delivery, though storage is local)
     socket.on("send_message", ({ to, message }) => {
-      socket.to(to).emit("receive_message", { from: socket.id, message });
+      const sender = users.get(socket.id);
+      socket.to(to).emit("receive_message", { from: sender?.phone || socket.id, message });
     });
   });
 

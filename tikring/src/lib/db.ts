@@ -1,16 +1,28 @@
 import { openDB, IDBPDatabase } from 'idb';
 
 const DB_NAME = 'ConnectMeDB';
-const DB_VERSION = 1;
+const DB_VERSION = 10;
 
 export interface Message {
   id: string;
   chatId: string;
   senderId: string;
   text: string;
+  mediaUrl?: string;
   timestamp: number;
   type: 'text' | 'image' | 'voice' | 'video_call' | 'voice_call';
   status: 'sent' | 'delivered' | 'read';
+}
+
+export interface CallLog {
+  id: string;
+  chatId: string;
+  callerName: string;
+  callerAvatar: string;
+  type: 'video' | 'audio';
+  direction: 'incoming' | 'outgoing' | 'missed';
+  duration: number; // in seconds
+  timestamp: number;
 }
 
 export interface Chat {
@@ -25,6 +37,7 @@ export interface Chat {
   type?: 'individual' | 'group';
   status?: 'friend' | 'pending' | 'blocked' | 'request_received';
   isBlocked?: boolean;
+  isVerified?: boolean;
 }
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
@@ -45,6 +58,9 @@ export const getDB = async () => {
         }
         if (!db.objectStoreNames.contains('groups')) {
           db.createObjectStore('groups', { keyPath: 'id' });
+        }
+        if (!db.objectStoreNames.contains('calls')) {
+          db.createObjectStore('calls', { keyPath: 'id' });
         }
       },
     });
@@ -174,4 +190,19 @@ export const updateContactStatus = async (id: string, status: 'friend' | 'pendin
 export const upsertChat = async (chat: Chat) => {
   const db = await getDB();
   await db.put('chats', chat);
+};
+
+export const saveCallLog = async (call: CallLog) => {
+  const db = await getDB();
+  await db.put('calls', call);
+};
+
+export const getCallLogs = async () => {
+  const db = await getDB();
+  return db.getAll('calls');
+};
+
+export const deleteCallLog = async (id: string) => {
+  const db = await getDB();
+  await db.delete('calls', id);
 };

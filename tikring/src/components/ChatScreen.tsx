@@ -1,21 +1,36 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Phone, Video, MoreVertical, Smile, Paperclip, Camera, Send, Mic } from 'lucide-react';
-import { motion } from 'motion/react';
+import { ArrowLeft, Phone, Video, MoreVertical, Smile, Paperclip, Camera, Send, Mic, X, Play, Pause, ExternalLink } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/src/lib/utils';
 import { Message, saveMessage, getMessages, getChat, Chat } from '@/src/lib/db';
+import { Socket } from 'socket.io-client';
 
 interface ChatScreenProps {
   chatId: string;
+  socket: Socket | null;
   onBack: () => void;
   onCall: (type: 'video' | 'audio') => void;
   onViewProfile: () => void;
 }
 
-export default function ChatScreen({ chatId, onBack, onCall, onViewProfile }: ChatScreenProps) {
+export default function ChatScreen({ chatId, socket, onBack, onCall, onViewProfile }: ChatScreenProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [chat, setChat] = useState<Chat | null>(null);
   const [inputText, setInputText] = useState('');
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [playingMessageId, setPlayingMessageId] = useState<string | null>(null);
+  const [audioCurrentTime, setAudioCurrentTime] = useState(0);
+  const [audioDuration, setAudioDuration] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const recordingDurationRef = useRef(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -35,6 +50,27 @@ export default function ChatScreen({ chatId, onBack, onCall, onViewProfile }: Ch
     }
   }, [messages]);
 
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleReceiveMessage = async (data: { from: string, message: Message }) => {
+      // Check if the message is for this chat
+      if (data.from === chat?.phone) {
+        const receivedMessage = {
+          ...data.message,
+          chatId: data.from, // Ensure it's the sender's phone
+          senderId: 'other' // Mark as received
+        };
+        setMessages(prev => [...prev, receivedMessage]);
+      }
+    };
+
+    socket.on('receive_message', handleReceiveMessage);
+    return () => {
+      socket.off('receive_message', handleReceiveMessage);
+    };
+  }, [socket, chatId, chat]);
+
   const handleSendMessage = async () => {
     if (!inputText.trim()) return;
 
@@ -49,8 +85,230 @@ export default function ChatScreen({ chatId, onBack, onCall, onViewProfile }: Ch
     };
 
     await saveMessage(newMessage);
+    
+    // Emit via socket
+    if (socket && chat?.phone) {
+      socket.emit('send_message', {
+        to: chat.phone,
+        message: newMessage
+      });
+    }
+
     setMessages(prev => [...prev, newMessage]);
     setInputText('');
+    setShowEmojiPicker(false);
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const isImage = file.type.startsWith('image/');
+      const isAudio = file.type.startsWith('audio/');
+      
+      let mediaUrl = '';
+      if (isImage || isAudio) {
+        const reader = new FileReader();
+        mediaUrl = await new Promise((resolve) => {
+          reader.onload = (e) => resolve(e.target?.result as string);
+          reader.readAsDataURL(file);
+        });
+      }
+
+      const newMessage: Message = {
+        id: Date.now().toString(),
+        chatId,
+        senderId: 'me',
+        text: isImage ? `Sent a photo: ${file.name}` : isAudio ? `Sent a voice note: ${file.name}` : `Sent a file: ${file.name}`,
+        mediaUrl: mediaUrl || undefined,
+        timestamp: Date.now(),
+        type: isImage ? 'image' : isAudio ? 'voice' : 'text',
+        status: 'sent',
+      };
+      await saveMessage(newMessage);
+
+      // Emit via socket
+      if (socket && chat?.phone) {
+        socket.emit('send_message', {
+          to: chat.phone,
+          message: newMessage
+        });
+      }
+
+      setMessages(prev => [...prev, newMessage]);
+      
+      const toast = document.createElement('div');
+      toast.className = 'fixed bottom-24 left-1/2 -translate-x-1/2 bg-primary text-white px-6 py-3 rounded-full shadow-2xl z-[100] font-bold';
+      toast.innerText = `${isImage ? 'Photo' : isAudio ? 'Audio' : 'File'} "${file.name}" sent!`;
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    }
+  };
+
+  useEffect(() => {
+    if (isRecording && recordingDuration >= 120) {
+      toggleRecording();
+      const toast = document.createElement('div');
+      toast.className = 'fixed bottom-24 left-1/2 -translate-x-1/2 bg-primary text-white px-6 py-3 rounded-full shadow-2xl z-[100] font-bold';
+      toast.innerText = "Maximum recording limit (2 min) reached!";
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    }
+  }, [recordingDuration, isRecording]);
+
+  const toggleRecording = async () => {
+    if (!isRecording) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const mediaRecorder = new MediaRecorder(stream);
+        mediaRecorderRef.current = mediaRecorder;
+        audioChunksRef.current = [];
+        recordingDurationRef.current = 0;
+        setRecordingDuration(0);
+
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            audioChunksRef.current.push(event.data);
+          }
+        };
+
+        mediaRecorder.onstop = async () => {
+          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+          const reader = new FileReader();
+          reader.readAsDataURL(audioBlob);
+          reader.onloadend = async () => {
+            const base64Audio = reader.result as string;
+            const duration = recordingDurationRef.current;
+            const durationStr = `${Math.floor(duration / 60)}:${(duration % 60).toString().padStart(2, '0')}`;
+            
+            const newMessage: Message = {
+              id: Date.now().toString(),
+              chatId,
+              senderId: 'me',
+              text: `🎤 Voice Message (${durationStr})`,
+              mediaUrl: base64Audio,
+              timestamp: Date.now(),
+              type: 'voice',
+              status: 'sent',
+            };
+
+            await saveMessage(newMessage);
+            if (socket && chat?.phone) {
+              socket.emit('send_message', { to: chat.phone, message: newMessage });
+            }
+            setMessages(prev => [...prev, newMessage]);
+            setRecordingDuration(0);
+            recordingDurationRef.current = 0;
+          };
+          
+          stream.getTracks().forEach(track => track.stop());
+        };
+
+        mediaRecorder.start();
+        setIsRecording(true);
+        
+        recordingIntervalRef.current = setInterval(() => {
+          setRecordingDuration(prev => {
+            const next = prev + 1;
+            recordingDurationRef.current = next;
+            return next;
+          });
+        }, 1000);
+
+      } catch (err) {
+        console.error('Error accessing microphone:', err);
+        const toast = document.createElement('div');
+        toast.className = 'fixed bottom-24 left-1/2 -translate-x-1/2 bg-red-500 text-white px-6 py-3 rounded-full shadow-2xl z-[100] font-bold';
+        toast.innerText = "Microphone access denied!";
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 3000);
+      }
+    } else {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+      }
+      setIsRecording(false);
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current);
+      }
+    }
+  };
+
+  const handlePlayAudio = (messageId: string, url: string) => {
+    if (playingMessageId === messageId) {
+      if (audioRef.current?.paused) {
+        audioRef.current.play();
+      } else {
+        audioRef.current?.pause();
+      }
+    } else {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.ontimeupdate = null;
+        audioRef.current.onloadedmetadata = null;
+        audioRef.current.onended = null;
+      }
+      
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      
+      audio.onloadedmetadata = () => {
+        setAudioDuration(audio.duration);
+      };
+      
+      audio.ontimeupdate = () => {
+        setAudioCurrentTime(audio.currentTime);
+      };
+      
+      audio.onended = () => {
+        setPlayingMessageId(null);
+        setAudioCurrentTime(0);
+      };
+      
+      audio.play();
+      setPlayingMessageId(messageId);
+    }
+  };
+
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const time = parseFloat(e.target.value);
+    if (audioRef.current) {
+      audioRef.current.currentTime = time;
+      setAudioCurrentTime(time);
+    }
+  };
+
+  const formatTime = (seconds: number) => {
+    if (isNaN(seconds)) return "0:00";
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const renderMessageText = (text: string) => {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const parts = text.split(urlRegex);
+    return parts.map((part, i) => {
+      if (part.match(urlRegex)) {
+        return (
+          <a 
+            key={i} 
+            href={part} 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            className="text-blue-200 underline flex items-center gap-1 inline-flex"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {part} <ExternalLink className="w-3 h-3" />
+          </a>
+        );
+      }
+      return part;
+    });
+  };
+
+  const addEmoji = (emoji: string) => {
+    setInputText(prev => prev + emoji);
+    setShowEmojiPicker(false);
   };
 
   return (
@@ -104,12 +362,67 @@ export default function ChatScreen({ chatId, onBack, onCall, onViewProfile }: Ch
             )}
           >
             <div className={cn(
-              "px-4 py-2 rounded-2xl text-sm shadow-sm",
+              "rounded-2xl text-sm shadow-sm overflow-hidden",
               msg.senderId === 'me' 
                 ? "bg-primary text-white rounded-tr-none" 
-                : "bg-white text-text-primary rounded-tl-none"
+                : "bg-white text-text-primary rounded-tl-none",
+              msg.type === 'voice' && "italic font-medium",
+              msg.type === 'image' && "bg-opacity-90 p-1"
             )}>
-              {msg.text}
+              {msg.type === 'image' && msg.mediaUrl && (
+                <img 
+                  src={msg.mediaUrl} 
+                  alt="Sent photo" 
+                  className="max-w-full rounded-xl mb-1"
+                  referrerPolicy="no-referrer"
+                />
+              )}
+              {msg.type === 'voice' && (
+                <div className="flex flex-col gap-1 p-3 min-w-[240px]">
+                  <div className="flex items-center gap-3">
+                    <button 
+                      onClick={() => msg.mediaUrl && handlePlayAudio(msg.id, msg.mediaUrl)}
+                      className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center hover:bg-white/30 transition-colors shrink-0"
+                    >
+                      {playingMessageId === msg.id && !audioRef.current?.paused ? (
+                        <Pause className="w-5 h-5 fill-current" />
+                      ) : (
+                        <Play className="w-5 h-5 fill-current ml-1" />
+                      )}
+                    </button>
+                    
+                    <div className="flex-1 flex flex-col gap-1">
+                      <input 
+                        type="range"
+                        min="0"
+                        max={playingMessageId === msg.id ? audioDuration : 100}
+                        value={playingMessageId === msg.id ? audioCurrentTime : 0}
+                        onChange={handleSeek}
+                        className="w-full h-1 bg-white/20 rounded-full appearance-none cursor-pointer accent-white"
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                      <div className="flex justify-between text-[9px] opacity-80">
+                        <span>{playingMessageId === msg.id ? formatTime(audioCurrentTime) : '0:00'}</span>
+                        <span>
+                          {playingMessageId === msg.id 
+                            ? `-${formatTime(audioDuration - audioCurrentTime)}` 
+                            : (msg.text.match(/\((.*?)\)/)?.[1] || '0:00')}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {msg.type !== 'image' && msg.type !== 'voice' && (
+                <div className="px-4 py-2">
+                  {renderMessageText(msg.text)}
+                </div>
+              )}
+              {msg.type === 'image' && (
+                <div className="px-3 py-1 text-[10px] opacity-70">
+                  {msg.text}
+                </div>
+              )}
             </div>
             <span className="text-[10px] text-text-secondary mt-1">
               {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -120,40 +433,101 @@ export default function ChatScreen({ chatId, onBack, onCall, onViewProfile }: Ch
       </div>
 
       {/* Input Bar */}
-      <div className="p-3 bg-white border-t border-gray-100 flex items-center gap-3">
-        <button className="text-text-secondary">
-          <Smile className="w-6 h-6" />
-        </button>
-        <div className="flex-1 bg-surface rounded-full px-4 py-2 flex items-center gap-2">
-          <input 
-            type="text" 
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-            placeholder="Write a message..."
-            className="flex-1 bg-transparent border-none focus:outline-none text-sm text-text-primary"
-          />
-          <button className="text-text-secondary">
-            <Paperclip className="w-5 h-5" />
-          </button>
-        </div>
-        {inputText.trim() ? (
+      <div className="p-3 bg-white border-t border-gray-100 flex flex-col gap-2">
+        <AnimatePresence>
+          {showEmojiPicker && (
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 10 }}
+              className="flex gap-4 p-3 bg-surface rounded-2xl overflow-x-auto no-scrollbar"
+            >
+              {['😊', '😂', '❤️', '👍', '🔥', '🙌', '🎉', '😎', '🤔', '😢'].map(emoji => (
+                <button 
+                  key={emoji} 
+                  onClick={() => addEmoji(emoji)}
+                  className="text-2xl hover:scale-125 transition-transform"
+                >
+                  {emoji}
+                </button>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <div className="flex items-center gap-3">
           <button 
-            onClick={handleSendMessage}
-            className="w-10 h-10 bg-primary rounded-full flex items-center justify-center text-white shadow-md"
+            onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+            className={cn("transition-colors", showEmojiPicker ? "text-primary" : "text-text-secondary")}
           >
-            <Send className="w-5 h-5" />
+            <Smile className="w-6 h-6" />
           </button>
-        ) : (
-          <div className="flex items-center gap-3">
-            <button className="text-text-secondary">
-              <Camera className="w-6 h-6" />
-            </button>
-            <button className="text-text-secondary">
-              <Mic className="w-6 h-6" />
+          
+          <div className="flex-1 bg-surface rounded-full px-4 py-2 flex items-center gap-2">
+            <input 
+              type="text" 
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+              placeholder={isRecording ? `Recording... ${Math.floor(recordingDuration / 60)}:${(recordingDuration % 60).toString().padStart(2, '0')}` : "Write a message..."}
+              className={cn(
+                "flex-1 bg-transparent border-none focus:outline-none text-sm text-text-primary",
+                isRecording && "text-red-500 font-bold animate-pulse"
+              )}
+              disabled={isRecording}
+            />
+            <button 
+              onClick={() => fileInputRef.current?.click()}
+              className="text-text-secondary hover:text-primary transition-colors"
+            >
+              <Paperclip className="w-5 h-5" />
             </button>
           </div>
-        )}
+
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            className="hidden" 
+            onChange={handleFileSelect}
+            accept="image/*,video/*,audio/*,.pdf,.doc,.docx"
+          />
+
+          <input 
+            type="file" 
+            ref={cameraInputRef} 
+            className="hidden" 
+            onChange={handleFileSelect}
+            accept="image/*"
+            capture="environment"
+          />
+
+          {inputText.trim() ? (
+            <button 
+              onClick={handleSendMessage}
+              className="w-10 h-10 bg-primary rounded-full flex items-center justify-center text-white shadow-md active:scale-90 transition-transform"
+            >
+              <Send className="w-5 h-5" />
+            </button>
+          ) : (
+            <div className="flex items-center gap-3">
+              <button 
+                onClick={() => cameraInputRef.current?.click()}
+                className="text-text-secondary hover:text-primary transition-colors"
+              >
+                <Camera className="w-6 h-6" />
+              </button>
+              <button 
+                onClick={toggleRecording}
+                className={cn(
+                  "w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300",
+                  isRecording ? "bg-red-500 text-white animate-pulse scale-110 shadow-lg" : "text-text-secondary"
+                )}
+              >
+                <Mic className="w-6 h-6" />
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

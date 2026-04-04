@@ -1,18 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, Filter, UserPlus, Users, Grid, List, ArrowLeft, X, Check, Save, Camera, QrCode, RefreshCw, User } from 'lucide-react';
-import { Html5QrcodeScanner } from 'html5-qrcode';
+import { Html5QrcodeScanner, Html5Qrcode } from 'html5-qrcode';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/src/lib/utils';
-import { getChats, Chat, addContact, createGroup, deleteContact, blockContact, unblockContact, updateContactStatus } from '@/src/lib/db';
-import { Trash2, ShieldAlert, UserPlus2, Clock } from 'lucide-react';
+import { getChats, Chat, addContact, createGroup, deleteContact, blockContact, unblockContact, updateContactStatus, getProfile } from '@/src/lib/db';
+import { Trash2, ShieldAlert, UserPlus2, Clock, CheckCircle2, RotateCcw, Camera as CameraIcon } from 'lucide-react';
+import { Socket } from 'socket.io-client';
 
 interface ContactsScreenProps {
   onContactSelect: (contactId: string) => void;
   onViewProfile: (contactId: string) => void;
   onBack: () => void;
+  socket: Socket | null;
 }
 
-export default function ContactsScreen({ onContactSelect, onViewProfile, onBack }: ContactsScreenProps) {
+export default function ContactsScreen({ onContactSelect, onViewProfile, onBack, socket }: ContactsScreenProps) {
   const [contacts, setContacts] = useState<Chat[]>([]);
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [searchQuery, setSearchQuery] = useState('');
@@ -21,6 +23,8 @@ export default function ContactsScreen({ onContactSelect, onViewProfile, onBack 
   const [isNewContactModalOpen, setIsNewContactModalOpen] = useState(false);
   const [isCreateGroupModalOpen, setIsCreateGroupModalOpen] = useState(false);
   const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
+  const scannerRef = useRef<Html5Qrcode | null>(null);
+  const [cameraFacingMode, setCameraFacingMode] = useState<'user' | 'environment'>('environment');
   const [isSyncing, setIsSyncing] = useState(false);
   const [scannedUser, setScannedUser] = useState<any>(null);
   
@@ -46,35 +50,86 @@ export default function ContactsScreen({ onContactSelect, onViewProfile, onBack 
     fetchContacts();
   }, []);
 
-  useEffect(() => {
-    let scanner: Html5QrcodeScanner | null = null;
-    if (isQrScannerOpen) {
-      scanner = new Html5QrcodeScanner(
-        "qr-reader",
-        { fps: 10, qrbox: { width: 250, height: 250 } },
-        /* verbose= */ false
-      );
-      scanner.render(
-        (decodedText) => {
-          handleScanQr(decodedText);
-          scanner?.clear();
-        },
-        (error) => {
-          // console.warn(error);
-        }
-      );
-    }
-    return () => {
-      if (scanner) {
-        scanner.clear().catch(err => console.error("Failed to clear scanner", err));
-      }
-    };
-  }, [isQrScannerOpen]);
-
-  const fetchContacts = async () => {
+  const fetchContacts = useCallback(async () => {
     const allChats = await getChats();
     setContacts(allChats);
-  };
+  }, []);
+
+  const handleCloseScanner = useCallback(async () => {
+    if (scannerRef.current && scannerRef.current.isScanning) {
+      try {
+        await scannerRef.current.stop();
+      } catch (err) {
+        // Ignore stop errors as they usually relate to DOM already being gone
+      }
+    }
+    setIsQrScannerOpen(false);
+  }, []);
+
+  const handleScanQr = useCallback(async (scannedData: string) => {
+    // Handle both raw phone numbers and prefixed data like "tikring-user:+1234567890"
+    let phone = scannedData;
+    if (scannedData.startsWith('tikring-user:')) {
+      phone = scannedData.split(':')[1];
+    } else if (scannedData.includes(':')) {
+      // Fallback for other colon-separated formats
+      phone = scannedData.split(':')[1];
+    }
+    
+    if (phone) {
+      // Mock finding a user
+      const mockFoundUser = {
+        name: 'TikRing User',
+        phone: phone,
+        avatar: `https://picsum.photos/seed/${phone}/100`,
+        status: 'Hey! I am using TikRing'
+      };
+      setScannedUser(mockFoundUser);
+      setNewContactPhone(phone);
+      setNewContactName(mockFoundUser.name);
+      handleCloseScanner();
+    }
+  }, [handleCloseScanner]);
+
+  useEffect(() => {
+    const startScanning = async () => {
+      if (isQrScannerOpen) {
+        try {
+          // Ensure the element exists and is clean
+          const element = document.getElementById("qr-reader");
+          if (!element) return;
+          element.innerHTML = ""; 
+
+          const html5QrCode = new Html5Qrcode("qr-reader");
+          scannerRef.current = html5QrCode;
+          
+          const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+          
+          await html5QrCode.start(
+            { facingMode: cameraFacingMode },
+            config,
+            (decodedText) => {
+              handleScanQr(decodedText);
+              handleCloseScanner();
+            },
+            () => {
+              // Ignore errors
+            }
+          );
+        } catch (err) {
+          console.error("Unable to start scanning", err);
+        }
+      }
+    };
+
+    startScanning();
+
+    return () => {
+      if (scannerRef.current && scannerRef.current.isScanning) {
+        scannerRef.current.stop().catch(() => {});
+      }
+    };
+  }, [isQrScannerOpen, cameraFacingMode, handleScanQr, handleCloseScanner]);
 
   const handleSyncContacts = async () => {
     setIsSyncing(true);
@@ -100,24 +155,6 @@ export default function ContactsScreen({ onContactSelect, onViewProfile, onBack 
     setTimeout(() => successMsg.remove(), 3000);
   };
 
-  const handleScanQr = async (scannedData: string) => {
-    // Simulate scanning a code like "tikring-user:+1234567890"
-    const phone = scannedData.includes(':') ? scannedData.split(':')[1] : scannedData;
-    if (phone) {
-      // Mock finding a user
-      const mockFoundUser = {
-        name: 'TikRing User',
-        phone: phone,
-        avatar: `https://picsum.photos/seed/${phone}/100`,
-        status: 'Hey! I am using TikRing'
-      };
-      setScannedUser(mockFoundUser);
-      setNewContactPhone(phone);
-      setNewContactName(mockFoundUser.name);
-      setIsQrScannerOpen(false);
-    }
-  };
-
   const filteredContacts = contacts.filter(c => 
     c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (c.phone && c.phone.includes(searchQuery))
@@ -129,6 +166,7 @@ export default function ContactsScreen({ onContactSelect, onViewProfile, onBack 
 
   const handleSendRequest = async (user: any) => {
     try {
+      const profile = await getProfile();
       const contact: Chat = {
         id: `req-${Date.now()}`,
         name: user.name,
@@ -141,6 +179,19 @@ export default function ContactsScreen({ onContactSelect, onViewProfile, onBack 
         lastTimestamp: Date.now(),
       };
       await addContact(contact);
+
+      // Emit the request via socket
+      if (socket && user.phone) {
+        socket.emit('friend_request', {
+          toPhone: user.phone,
+          fromUser: {
+            name: profile?.name || 'TikRing User',
+            phone: profile?.phone,
+            avatar: profile?.avatar || 'https://picsum.photos/seed/tikring/100'
+          }
+        });
+      }
+
       setScannedUser(null);
       setSearchQuery('');
       await fetchContacts();
@@ -409,6 +460,9 @@ export default function ContactsScreen({ onContactSelect, onViewProfile, onBack 
                   )}>
                     {contact.name}
                   </h3>
+                  {contact.isVerified && (
+                    <CheckCircle2 className="w-3.5 h-3.5 text-primary fill-primary/10 flex-shrink-0" />
+                  )}
                   {contact.status === 'pending' && (
                     <span className="flex items-center gap-1 text-[8px] bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider">
                       <Clock className="w-2.5 h-2.5" />
@@ -540,11 +594,27 @@ export default function ContactsScreen({ onContactSelect, onViewProfile, onBack 
           >
             <div className="p-6 flex justify-between items-center text-white">
               <h3 className="font-bold">Scan QR Code</h3>
-              <button onClick={() => setIsQrScannerOpen(false)}><X className="w-6 h-6" /></button>
+              <div className="flex items-center gap-4">
+                <button 
+                  onClick={() => setCameraFacingMode(prev => prev === 'user' ? 'environment' : 'user')}
+                  className="p-2 bg-white/10 rounded-full hover:bg-white/20 transition-colors"
+                  title="Switch Camera"
+                >
+                  <RotateCcw className="w-5 h-5" />
+                </button>
+                <button onClick={handleCloseScanner}><X className="w-6 h-6" /></button>
+              </div>
             </div>
             
             <div className="flex-1 flex flex-col items-center justify-center p-4 gap-8">
-              <div id="qr-reader" className="w-full max-w-sm rounded-3xl overflow-hidden border-2 border-primary/30" />
+              <div id="qr-reader" className="w-full max-w-sm rounded-3xl overflow-hidden border-2 border-primary/30 relative">
+                <div className="absolute top-4 right-4 z-10 bg-black/40 backdrop-blur-md px-3 py-1 rounded-full flex items-center gap-2 border border-white/10">
+                  <CameraIcon className="w-3 h-3 text-white" />
+                  <span className="text-[10px] text-white font-bold uppercase tracking-wider">
+                    {cameraFacingMode === 'user' ? 'Front' : 'Back'}
+                  </span>
+                </div>
+              </div>
               
               <p className="text-white/60 text-center text-sm px-8">Align the QR code within the frame to scan. Camera access is required.</p>
               

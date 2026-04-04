@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Mic, MicOff, Video, VideoOff, PhoneOff, Volume2, Repeat, Monitor, MonitorOff, Camera, Ghost, Sparkles } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, PhoneOff, Volume2, Repeat, Monitor, MonitorOff, Camera, Ghost, Sparkles, X, Compass, LayoutGrid } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/src/lib/utils';
 
@@ -10,6 +10,8 @@ interface VideoCallProps {
   callerName: string;
   isIncoming?: boolean;
   onAccept?: () => void;
+  onSwitchCamera?: () => void;
+  onToggleScreenShare?: (isSharing: boolean) => Promise<boolean>;
 }
 
 export default function VideoCall({ 
@@ -18,7 +20,9 @@ export default function VideoCall({
   onEndCall, 
   callerName,
   isIncoming,
-  onAccept
+  onAccept,
+  onSwitchCamera,
+  onToggleScreenShare
 }: VideoCallProps) {
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -26,7 +30,11 @@ export default function VideoCall({
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [isBlurActive, setIsBlurActive] = useState(false);
+  const [virtualBackground, setVirtualBackground] = useState<'none' | 'blur' | 'studio' | 'office' | 'beach'>('none');
+  const [showBackgroundMenu, setShowBackgroundMenu] = useState(false);
+  const [showToolsMenu, setShowToolsMenu] = useState(false);
   const [showScreenshotFlash, setShowScreenshotFlash] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [duration, setDuration] = useState(0);
 
   useEffect(() => {
@@ -70,12 +78,28 @@ export default function VideoCall({
     }
   };
 
-  const toggleScreenShare = () => {
-    setIsScreenSharing(!isScreenSharing);
+  const toggleScreenShare = async () => {
+    const nextSharing = !isScreenSharing;
+    if (onToggleScreenShare) {
+      const success = await onToggleScreenShare(nextSharing);
+      if (success) {
+        setIsScreenSharing(nextSharing);
+      } else {
+        setError("Screen share permission was denied. To share your screen, please select a window or screen in the browser's dialog and click 'Share'.");
+        setTimeout(() => setError(null), 5000);
+      }
+    }
   };
 
   const toggleBlur = () => {
-    setIsBlurActive(!isBlurActive);
+    setVirtualBackground(prev => prev === 'blur' ? 'none' : 'blur');
+    setIsBlurActive(prev => !prev);
+  };
+
+  const selectBackground = (bg: 'none' | 'blur' | 'studio' | 'office' | 'beach') => {
+    setVirtualBackground(bg);
+    setIsBlurActive(bg !== 'none');
+    setShowBackgroundMenu(false);
   };
 
   const takeScreenshot = () => {
@@ -86,6 +110,20 @@ export default function VideoCall({
 
   return (
     <div className="fixed inset-0 bg-black z-50 flex flex-col overflow-hidden">
+      {/* Error Message */}
+      <AnimatePresence>
+        {error && (
+          <motion.div 
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="absolute top-32 left-6 right-6 bg-red-500/90 backdrop-blur-md text-white p-4 rounded-2xl text-center text-sm font-bold z-[60] shadow-2xl border border-white/20"
+          >
+            {error}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Remote Video (Full Screen) */}
       <div className="absolute inset-0 flex items-center justify-center">
         {isScreenSharing ? (
@@ -157,7 +195,8 @@ export default function VideoCall({
         dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
         className={cn(
           "absolute bottom-32 right-6 w-32 h-44 bg-gray-900 rounded-xl overflow-hidden shadow-2xl border-2 z-30 transition-all duration-300",
-          isScreenSharing ? "border-primary ring-4 ring-primary/20 scale-105" : "border-white/20"
+          isScreenSharing ? "border-primary ring-4 ring-primary/20 scale-105" : 
+          (isMuted || isVideoOff) ? "border-red-500 ring-4 ring-red-500/20" : "border-white/20"
         )}
       >
         <video 
@@ -167,9 +206,26 @@ export default function VideoCall({
           muted 
           className={cn(
             "w-full h-full object-cover transition-all duration-500",
-            isBlurActive && "blur-md scale-110"
+            virtualBackground === 'blur' && "blur-xl scale-110",
+            virtualBackground === 'studio' && "brightness-125 contrast-110 saturate-110",
+            (virtualBackground === 'office' || virtualBackground === 'beach') && "opacity-40"
           )}
         />
+        {virtualBackground === 'studio' && !isVideoOff && (
+          <div className="absolute inset-0 bg-gradient-to-tr from-primary/20 via-transparent to-yellow-500/10 mix-blend-overlay pointer-events-none" />
+        )}
+        {(virtualBackground === 'office' || virtualBackground === 'beach') && !isVideoOff && (
+          <div className="absolute inset-0 z-[-1] bg-gray-900">
+            <img 
+              src={virtualBackground === 'office' ? "https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=800&q=80" : "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=800&q=80"} 
+              className="w-full h-full object-cover blur-sm opacity-80"
+              alt="Background"
+            />
+          </div>
+        )}
+        {isBlurActive && !isVideoOff && (
+          <div className="absolute inset-0 bg-primary/5 backdrop-blur-[2px] pointer-events-none" />
+        )}
         {isScreenSharing && (
           <div className="absolute top-2 left-2 right-2 bg-primary/90 backdrop-blur-sm px-2 py-1 rounded-lg text-[8px] font-black text-white text-center uppercase tracking-widest shadow-lg">
             Screen Sharing
@@ -210,33 +266,112 @@ export default function VideoCall({
             {isVideoOff ? <VideoOff className="w-5 h-5" /> : <Video className="w-5 h-5" />}
           </button>
 
-          <button 
-            onClick={toggleBlur}
-            className={cn(
-              "p-3 rounded-full transition-colors",
-              isBlurActive ? "bg-white text-black" : "bg-white/20 text-white"
-            )}
-            title="Toggle Background Blur"
-          >
-            <Ghost className="w-5 h-5" />
-          </button>
+          <div className="relative">
+            <button 
+              onClick={() => setShowBackgroundMenu(!showBackgroundMenu)}
+              className={cn(
+                "p-3 rounded-full transition-colors",
+                virtualBackground !== 'none' ? "bg-white text-black" : "bg-white/20 text-white"
+              )}
+              title="Virtual Backgrounds"
+            >
+              <Sparkles className="w-5 h-5" />
+            </button>
+            
+            <AnimatePresence>
+              {showBackgroundMenu && (
+                <motion.div 
+                  initial={{ opacity: 0, y: -20, scale: 0.9 }}
+                  animate={{ opacity: 1, y: -10, scale: 1 }}
+                  exit={{ opacity: 0, y: -20, scale: 0.9 }}
+                  className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 bg-black/80 backdrop-blur-xl border border-white/20 rounded-2xl p-2 flex flex-col gap-1 min-w-[120px] shadow-2xl z-50"
+                >
+                  {[
+                    { id: 'none', label: 'None', icon: <X className="w-4 h-4" /> },
+                    { id: 'blur', label: 'Blur', icon: <Ghost className="w-4 h-4" /> },
+                    { id: 'studio', label: 'Studio', icon: <Sparkles className="w-4 h-4" /> },
+                    { id: 'office', label: 'Office', icon: <Monitor className="w-4 h-4" /> },
+                    { id: 'beach', label: 'Beach', icon: <Compass className="w-4 h-4" /> },
+                  ].map((bg) => (
+                    <button
+                      key={bg.id}
+                      onClick={() => selectBackground(bg.id as any)}
+                      className={cn(
+                        "flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-colors",
+                        virtualBackground === bg.id ? "bg-primary text-white" : "text-white/70 hover:bg-white/10"
+                      )}
+                    >
+                      {bg.icon}
+                      {bg.label}
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
 
-          <button 
-            onClick={toggleScreenShare}
-            className={cn(
-              "p-3 rounded-full transition-colors",
-              isScreenSharing ? "bg-primary text-white" : "bg-white/20 text-white"
-            )}
-          >
-            {isScreenSharing ? <MonitorOff className="w-5 h-5" /> : <Monitor className="w-5 h-5" />}
-          </button>
+          <div className="relative">
+            <button 
+              onClick={() => {
+                setShowToolsMenu(!showToolsMenu);
+                setShowBackgroundMenu(false);
+              }}
+              className={cn(
+                "p-3 rounded-full transition-colors",
+                (isScreenSharing || showToolsMenu) ? "bg-white text-black" : "bg-white/20 text-white"
+              )}
+              title="Tools"
+            >
+              <LayoutGrid className="w-5 h-5" />
+            </button>
+            
+            <AnimatePresence>
+              {showToolsMenu && (
+                <motion.div 
+                  initial={{ opacity: 0, y: -20, scale: 0.9 }}
+                  animate={{ opacity: 1, y: -10, scale: 1 }}
+                  exit={{ opacity: 0, y: -20, scale: 0.9 }}
+                  className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 bg-black/80 backdrop-blur-xl border border-white/20 rounded-2xl p-2 flex flex-col gap-1 min-w-[140px] shadow-2xl z-50"
+                >
+                  <button 
+                    onClick={() => {
+                      toggleScreenShare();
+                      setShowToolsMenu(false);
+                    }}
+                    className={cn(
+                      "flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-colors",
+                      isScreenSharing ? "bg-primary text-white" : "text-white/70 hover:bg-white/10"
+                    )}
+                  >
+                    {isScreenSharing ? <MonitorOff className="w-4 h-4" /> : <Monitor className="w-4 h-4" />}
+                    {isScreenSharing ? 'Stop Sharing' : 'Screen Share'}
+                  </button>
 
-          <button 
-            onClick={takeScreenshot}
-            className="p-3 rounded-full bg-white/20 text-white hover:bg-white/40 transition-colors"
-          >
-            <Camera className="w-5 h-5" />
-          </button>
+                  <button 
+                    onClick={() => {
+                      takeScreenshot();
+                      setShowToolsMenu(false);
+                    }}
+                    className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-white/70 hover:bg-white/10 transition-colors"
+                  >
+                    <Camera className="w-4 h-4" />
+                    Screenshot
+                  </button>
+
+                  <button 
+                    onClick={() => {
+                      onSwitchCamera?.();
+                      setShowToolsMenu(false);
+                    }}
+                    className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-white/70 hover:bg-white/10 transition-colors"
+                  >
+                    <Repeat className="w-4 h-4" />
+                    Switch Camera
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
 
           <button 
             onClick={onEndCall}
