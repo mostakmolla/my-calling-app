@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Phone, Video, MoreVertical, Smile, Paperclip, Camera, Send, Mic, X, Play, Pause, ExternalLink, MapPin, Volume2, Loader2 } from 'lucide-react';
+import { ArrowLeft, Phone, Video, MoreVertical, Smile, Paperclip, Camera, Send, Mic, X, Play, Pause, ExternalLink, MapPin, Volume2, Loader2, Users } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/src/lib/utils';
-import { Message, saveMessage, getMessages, getChat, Chat } from '@/src/lib/db';
+import { Message, saveMessage, getMessages, getChat, Chat, getGroup, Group } from '@/src/lib/db';
 import { Socket } from 'socket.io-client';
 import { GoogleGenAI, Modality } from "@google/genai";
 
@@ -19,6 +19,7 @@ interface ChatScreenProps {
 export default function ChatScreen({ chatId, socket, onBack, onCall, onViewProfile }: ChatScreenProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [chat, setChat] = useState<Chat | null>(null);
+  const [group, setGroup] = useState<Group | null>(null);
   const [inputText, setInputText] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
@@ -45,6 +46,11 @@ export default function ChatScreen({ chatId, socket, onBack, onCall, onViewProfi
       ]);
       setMessages(storedMessages as Message[]);
       setChat(chatData);
+      
+      if (chatData?.type === 'group') {
+        const groupData = await getGroup(chatId);
+        setGroup(groupData || null);
+      }
     };
     fetchData();
   }, [chatId]);
@@ -58,13 +64,13 @@ export default function ChatScreen({ chatId, socket, onBack, onCall, onViewProfi
   useEffect(() => {
     if (!socket) return;
 
-    const handleReceiveMessage = async (data: { from: string, message: Message }) => {
+    const handleReceiveMessage = async (data: { from: string, message: Message, senderPhone?: string }) => {
       // Check if the message is for this chat
-      if (data.from === chat?.phone) {
+      if (data.from === chatId) {
         const receivedMessage = {
           ...data.message,
-          chatId: data.from, // Ensure it's the sender's phone
-          senderId: 'other' // Mark as received
+          chatId: data.from,
+          senderId: data.senderPhone || 'other'
         };
         setMessages(prev => [...prev, receivedMessage]);
       }
@@ -125,10 +131,11 @@ export default function ChatScreen({ chatId, socket, onBack, onCall, onViewProfi
     await saveMessage(newMessage);
     
     // Emit via socket
-    if (socket && chat?.phone) {
+    if (socket && chatId) {
       socket.emit('send_message', {
-        to: chat.phone,
-        message: newMessage
+        to: chatId,
+        message: newMessage,
+        isGroup: chat?.type === 'group'
       });
     }
 
@@ -447,7 +454,7 @@ export default function ChatScreen({ chatId, socket, onBack, onCall, onViewProfi
           <div>
             <h3 className="text-sm font-bold text-text-primary">{chat?.name || 'Loading...'}</h3>
             <span className="text-[10px] text-online font-medium">
-              {isTyping ? 'Typing...' : (chat?.isOnline ? 'Online' : 'Offline')}
+              {isTyping ? 'Typing...' : (chat?.type === 'group' ? `${group?.members.length || 0} members` : (chat?.isOnline ? 'Online' : 'Offline'))}
             </span>
           </div>
         </div>
@@ -485,6 +492,11 @@ export default function ChatScreen({ chatId, socket, onBack, onCall, onViewProfi
               msg.type === 'voice' && "italic font-medium",
               msg.type === 'image' && "bg-opacity-90 p-1"
             )}>
+              {chat?.type === 'group' && msg.senderId !== 'me' && (
+                <div className="px-3 pt-2 text-[10px] font-black text-primary uppercase tracking-tighter">
+                  {msg.senderId}
+                </div>
+              )}
               {msg.type === 'image' && msg.mediaUrl && (
                 <img 
                   src={msg.mediaUrl} 

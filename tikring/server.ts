@@ -66,10 +66,29 @@ async function startServer() {
       socket.to(to).emit("ice_candidate", { from: socket.id, candidate });
     });
 
+    // Group signaling
+    socket.on("group_created", ({ to, group }) => {
+      const targetSocketId = phoneToSocket.get(to);
+      if (targetSocketId) {
+        socket.to(targetSocketId).emit("group_invitation", group);
+      }
+    });
+
+    socket.on("join_group", (groupId) => {
+      socket.join(groupId);
+      console.log(`User ${socket.id} joined group ${groupId}`);
+    });
+
     // Chat signaling (for real-time delivery, though storage is local)
-    socket.on("send_message", ({ to, message }) => {
+    socket.on("send_message", ({ to, message, isGroup }) => {
       const sender = users.get(socket.id);
-      socket.to(to).emit("receive_message", { from: sender?.phone || socket.id, message });
+      if (isGroup) {
+        // Broadcast to the group room
+        socket.to(to).emit("receive_message", { from: to, message, senderPhone: sender?.phone });
+      } else {
+        // Individual message
+        socket.to(to).emit("receive_message", { from: sender?.phone || socket.id, message });
+      }
     });
 
     socket.on("typing", ({ to }) => {

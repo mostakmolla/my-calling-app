@@ -8,10 +8,12 @@ interface HomeScreenProps {
   onChatSelect: (chatId: string) => void;
   onCallSelect: (chatId: string, type: 'video' | 'audio') => void;
   onProfileOpen: () => void;
+  onCreateGroup: () => void;
   socket: any;
+  onlineUsers: any[];
 }
 
-export default function HomeScreen({ onChatSelect, onCallSelect, onProfileOpen, socket }: HomeScreenProps) {
+export default function HomeScreen({ onChatSelect, onCallSelect, onProfileOpen, onCreateGroup, socket, onlineUsers }: HomeScreenProps) {
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeTab, setActiveTab] = useState('chats');
   const [userProfile, setUserProfile] = useState<any>(null);
@@ -171,6 +173,22 @@ export default function HomeScreen({ onChatSelect, onCallSelect, onProfileOpen, 
     }
   };
 
+  const handleGlobalUserClick = async (user: any) => {
+    // Add to contacts if not already there
+    const newContact: Chat = {
+      id: user.phone,
+      name: user.username,
+      phone: user.phone,
+      avatar: `https://picsum.photos/seed/${user.phone}/100`,
+      unreadCount: 0,
+      isOnline: true,
+      status: 'friend',
+      type: 'individual'
+    };
+    await addContact(newContact);
+    onChatSelect(user.phone);
+  };
+
   return (
     <div className="flex flex-col h-full bg-white max-w-md mx-auto shadow-2xl relative overflow-hidden">
       {/* Top App Bar */}
@@ -188,6 +206,37 @@ export default function HomeScreen({ onChatSelect, onCallSelect, onProfileOpen, 
 
       {/* Story Bar */}
       <div className="flex overflow-x-auto py-4 px-4 gap-4 no-scrollbar border-b border-gray-50">
+        <div className="flex flex-col items-center flex-shrink-0 gap-1">
+          <button 
+            onClick={onCreateGroup}
+            className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center border-2 border-dashed border-primary/30 transition-transform active:scale-90"
+          >
+            <Users className="w-6 h-6 text-primary" />
+          </button>
+          <span className="text-[11px] text-primary font-bold">New Group</span>
+        </div>
+        
+        {/* Global Online Users */}
+        {onlineUsers.length > 0 && onlineUsers.map((user) => (
+          <div key={`global-${user.id}`} className="flex flex-col items-center flex-shrink-0 gap-1">
+            <div 
+              className="relative cursor-pointer" 
+              onClick={() => handleGlobalUserClick(user)}
+            >
+              <div className="w-14 h-14 rounded-full p-[2px] bg-gradient-to-tr from-green-400 to-blue-500">
+                <img 
+                  src={`https://picsum.photos/seed/${user.phone}/100`} 
+                  alt={user.username} 
+                  className="w-full h-full rounded-full object-cover border-2 border-white"
+                  referrerPolicy="no-referrer"
+                />
+              </div>
+              <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-online rounded-full border-2 border-white" />
+            </div>
+            <span className="text-[11px] text-text-secondary font-bold truncate w-14 text-center">{user.username}</span>
+          </div>
+        ))}
+
         {stories.map((story) => (
           <div key={`story-bar-${story.id}`} className="flex flex-col items-center flex-shrink-0 gap-1">
             <div className="relative" onClick={() => handleStoryClick(story)}>
@@ -241,6 +290,9 @@ export default function HomeScreen({ onChatSelect, onCallSelect, onProfileOpen, 
               <div className="flex justify-between items-baseline">
                 <div className="flex items-center gap-1 min-w-0">
                   <h3 className="text-[16px] font-bold text-text-primary truncate">{chat.name}</h3>
+                  {chat.type === 'group' && (
+                    <span className="bg-primary/10 text-primary text-[8px] font-black uppercase px-1 rounded-sm border border-primary/20">Group</span>
+                  )}
                   {chat.isVerified && (
                     <CheckCircle2 className="w-3.5 h-3.5 text-primary fill-primary/10 flex-shrink-0" />
                   )}

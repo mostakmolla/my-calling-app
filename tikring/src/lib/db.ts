@@ -25,6 +25,16 @@ export interface CallLog {
   timestamp: number;
 }
 
+export interface Group {
+  id: string;
+  name: string;
+  avatar: string;
+  description?: string;
+  members: string[]; // Array of phone numbers or IDs
+  createdBy: string;
+  createdAt: number;
+}
+
 export interface Chat {
   id: string;
   name: string;
@@ -97,7 +107,7 @@ export const addContact = async (contact: Chat) => {
   await db.put('chats', { ...contact, type: 'individual' });
 };
 
-export const createGroup = async (group: any) => {
+export const createGroup = async (group: Group) => {
   const db = await getDB();
   await db.put('groups', group);
   // Also add to chats for the list view
@@ -106,11 +116,44 @@ export const createGroup = async (group: any) => {
     name: group.name,
     avatar: group.avatar,
     lastMessage: 'Group created',
-    lastTimestamp: Date.now(),
+    lastTimestamp: group.createdAt,
     unreadCount: 0,
     isOnline: false,
     type: 'group',
   });
+};
+
+export const getGroup = async (id: string): Promise<Group | undefined> => {
+  const db = await getDB();
+  return db.get('groups', id);
+};
+
+export const updateGroup = async (group: Group) => {
+  const db = await getDB();
+  await db.put('groups', group);
+  
+  // Update chat entry too
+  const chat = await db.get('chats', group.id);
+  if (chat) {
+    chat.name = group.name;
+    chat.avatar = group.avatar;
+    await db.put('chats', chat);
+  }
+};
+
+export const deleteGroup = async (id: string) => {
+  const db = await getDB();
+  await db.delete('groups', id);
+  await db.delete('chats', id);
+  // Also delete messages
+  const tx = db.transaction('messages', 'readwrite');
+  const index = tx.store.index('chatId');
+  let cursor = await index.openCursor(IDBKeyRange.only(id));
+  while (cursor) {
+    await cursor.delete();
+    cursor = await cursor.continue();
+  }
+  await tx.done;
 };
 
 export const saveMessage = async (message: Message) => {

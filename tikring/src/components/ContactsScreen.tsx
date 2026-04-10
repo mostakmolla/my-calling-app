@@ -12,9 +12,10 @@ interface ContactsScreenProps {
   onViewProfile: (contactId: string) => void;
   onBack: () => void;
   socket: Socket | null;
+  onlineUsers?: any[];
 }
 
-export default function ContactsScreen({ onContactSelect, onViewProfile, onBack, socket }: ContactsScreenProps) {
+export default function ContactsScreen({ onContactSelect, onViewProfile, onBack, socket, onlineUsers = [] }: ContactsScreenProps) {
   const [contacts, setContacts] = useState<Chat[]>([]);
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [searchQuery, setSearchQuery] = useState('');
@@ -264,11 +265,13 @@ export default function ContactsScreen({ onContactSelect, onViewProfile, onBack,
 
     setIsCreating(true);
     try {
+      const profile = await getProfile();
       const group = {
         id: 'group_' + Date.now(),
         name: groupName,
         avatar: `https://picsum.photos/seed/group_${Date.now()}/100`,
-        members: selectedContacts,
+        members: [...selectedContacts, profile?.phone || 'me'],
+        createdBy: profile?.phone || 'me',
         createdAt: Date.now(),
       };
       
@@ -302,6 +305,28 @@ export default function ContactsScreen({ onContactSelect, onViewProfile, onBack,
       console.log('New selected contacts:', next);
       return next;
     });
+  };
+
+  const handleAddGlobalUser = async (user: any) => {
+    const newContact: Chat = {
+      id: user.phone,
+      name: user.username,
+      phone: user.phone,
+      avatar: `https://picsum.photos/seed/${user.phone}/100`,
+      unreadCount: 0,
+      isOnline: true,
+      status: 'friend',
+      type: 'individual'
+    };
+    await addContact(newContact);
+    await fetchContacts();
+    
+    // Show success feedback
+    const successMsg = document.createElement('div');
+    successMsg.className = 'fixed bottom-20 left-1/2 -translate-x-1/2 bg-green-500 text-white px-6 py-3 rounded-full shadow-xl z-[100] font-bold animate-bounce';
+    successMsg.innerText = `Added ${user.username} to contacts!`;
+    document.body.appendChild(successMsg);
+    setTimeout(() => successMsg.remove(), 3000);
   };
 
   return (
@@ -373,6 +398,34 @@ export default function ContactsScreen({ onContactSelect, onViewProfile, onBack,
           </button>
         </div>
       </div>
+
+      {/* Global Online Users Section */}
+      {onlineUsers.length > 0 && (
+        <div className="px-4 pb-4">
+          <h4 className="text-[11px] font-black text-primary uppercase tracking-widest mb-3 ml-1">Global Online Users</h4>
+          <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2">
+            {onlineUsers.map((user) => (
+              <div 
+                key={`global-contact-${user.id}`} 
+                className="flex flex-col items-center gap-1.5 flex-shrink-0 cursor-pointer group"
+                onClick={() => handleAddGlobalUser(user)}
+              >
+                <div className="relative">
+                  <div className="w-14 h-14 rounded-2xl p-[2px] bg-gradient-to-tr from-primary to-blue-400 group-hover:scale-105 transition-transform">
+                    <img 
+                      src={`https://picsum.photos/seed/${user.phone}/100`} 
+                      className="w-full h-full rounded-2xl object-cover border-2 border-white" 
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
+                  <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-online rounded-full border-2 border-white shadow-sm" />
+                </div>
+                <span className="text-[10px] font-bold text-text-primary truncate w-14 text-center">{user.username}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Contact List */}
       <div className={cn(

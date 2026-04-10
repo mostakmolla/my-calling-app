@@ -8,7 +8,9 @@ import ProfileScreen from './components/ProfileScreen';
 import ContactsScreen from './components/ContactsScreen';
 import FriendProfileScreen from './components/FriendProfileScreen';
 import CallHistoryScreen from './components/CallHistoryScreen';
-import { initDB, getChat, Chat, getProfile, addContact, saveMessage, Message, saveCallLog, CallLog } from './lib/db';
+import CreateGroupScreen from './components/CreateGroupScreen';
+import GroupInfoScreen from './components/GroupInfoScreen';
+import { initDB, getChat, Chat, getProfile, saveProfile, addContact, saveMessage, Message, saveCallLog, CallLog, createGroup, Group } from './lib/db';
 import { cn } from './lib/utils';
 
 const STUN_SERVERS = {
@@ -20,7 +22,7 @@ const STUN_SERVERS = {
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'chats' | 'calls' | 'explore' | 'contacts'>('chats');
-  const [currentScreen, setCurrentScreen] = useState<'main' | 'chat' | 'call' | 'profile' | 'friend_profile'>('main');
+  const [currentScreen, setCurrentScreen] = useState<'main' | 'chat' | 'call' | 'profile' | 'friend_profile' | 'create_group' | 'group_info'>('main');
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [selectedChatName, setSelectedChatName] = useState<string>('Adam');
   const [selectedChatAvatar, setSelectedChatAvatar] = useState<string>('');
@@ -30,6 +32,7 @@ export default function App() {
   
   // WebRTC & Socket State
   const [socket, setSocket] = useState<Socket | null>(null);
+  const [onlineUsers, setOnlineUsers] = useState<any[]>([]);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [isIncomingCall, setIsIncomingCall] = useState(false);
@@ -50,15 +53,35 @@ export default function App() {
   useEffect(() => {
     const setup = async () => {
       await initDB();
-      const profile = await getProfile();
+      let profile = await getProfile();
+      
+      // Ensure user has a unique phone number for signaling
+      if (!profile || !profile.phone) {
+        const randomPhone = Math.floor(1000000000 + Math.random() * 9000000000).toString();
+        const defaultProfile = {
+          name: profile?.name || 'User_' + Math.floor(Math.random() * 1000),
+          phone: randomPhone,
+          avatar: `https://picsum.photos/seed/${randomPhone}/200`,
+          status: 'Hey! I am using ConnectMe',
+          isPhoneVerified: true
+        };
+        await saveProfile(defaultProfile);
+        profile = defaultProfile;
+      }
+
       const newSocket = io();
       setSocket(newSocket);
 
       newSocket.on('connect', () => {
         newSocket.emit('register', {
-          username: profile?.name || 'User_' + Math.floor(Math.random() * 1000),
+          username: profile?.name,
           phone: profile?.phone
         });
+      });
+
+      newSocket.on('user_list', (users: any[]) => {
+        // Filter out self
+        setOnlineUsers(users.filter(u => u.phone !== profile?.phone));
       });
 
       newSocket.on('friend_request_received', async (fromUser) => {
@@ -118,19 +141,31 @@ export default function App() {
         }
       });
 
-      newSocket.on('receive_message', async (data: { from: string, message: Message }) => {
+      newSocket.on('group_invitation', async (group: Group) => {
+        await createGroup(group);
+        newSocket.emit('join_group', group.id);
+        
+        const toast = document.createElement('div');
+        toast.className = 'fixed top-4 left-1/2 -translate-x-1/2 bg-primary text-white px-6 py-3 rounded-full shadow-2xl z-[100] font-bold animate-bounce';
+        toast.innerText = `You were added to group: ${group.name}`;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 5000);
+      });
+
+      newSocket.on('receive_message', async (data: { from: string, message: Message, senderPhone?: string }) => {
         // Check if chat exists
         let chat = await getChat(data.from);
         if (!chat) {
-          // Create a temporary chat entry for the new sender
+          // If it's a group message and we don't have the group, we might need to fetch it (simplified here)
           chat = {
             id: data.from,
-            name: data.from, // Use phone number as name initially
+            name: data.senderPhone || data.from,
             avatar: `https://picsum.photos/seed/${data.from}/100`,
-            phone: data.from,
+            phone: data.senderPhone || data.from,
             unreadCount: 0,
             isOnline: true,
-            status: 'pending'
+            status: 'pending',
+            type: data.senderPhone ? 'group' : 'individual'
           };
           await addContact(chat);
         }
@@ -138,8 +173,8 @@ export default function App() {
         // Save the message to DB
         const receivedMessage = {
           ...data.message,
-          chatId: data.from, // The chat ID for the receiver is the sender's phone
-          senderId: 'other' // Mark as received
+          chatId: data.from, 
+          senderId: data.senderPhone || 'other' 
         };
         await saveMessage(receivedMessage);
 
@@ -394,6 +429,7 @@ export default function App() {
         return (
           <HomeScreen 
             socket={socket}
+            onlineUsers={onlineUsers}
             onChatSelect={async (id) => {
               setSelectedChatId(id);
               const chat = await getChat(id);
@@ -405,6 +441,7 @@ export default function App() {
             }}
             onCallSelect={(id, type) => startCall(type, id)}
             onProfileOpen={() => setCurrentScreen('profile')}
+            onCreateGroup={() => setCurrentScreen('create_group')}
           />
         );
       case 'calls':
@@ -418,6 +455,7 @@ export default function App() {
         return (
           <ContactsScreen 
             socket={socket}
+            onlineUsers={onlineUsers}
             onContactSelect={async (id) => {
               setSelectedChatId(id);
               const chat = await getChat(id);
@@ -461,8 +499,12 @@ export default function App() {
               onViewProfile={async () => {
                 const chat = await getChat(selectedChatId);
                 if (chat) {
-                  setSelectedFriend(chat);
-                  setCurrentScreen('friend_profile');
+                  if (chat.type === 'group') {
+                    setCurrentScreen('group_info');
+                  } else {
+                    setSelectedFriend(chat);
+                    setCurrentScreen('friend_profile');
+                  }
                 }
               }}
             />
@@ -494,6 +536,29 @@ export default function App() {
           {currentScreen === 'profile' && (
             <ProfileScreen 
               onBack={() => setCurrentScreen('main')}
+            />
+          )}
+
+          {currentScreen === 'create_group' && (
+            <CreateGroupScreen 
+              socket={socket}
+              onBack={() => setCurrentScreen('main')}
+              onGroupCreated={(groupId) => {
+                setSelectedChatId(groupId);
+                setCurrentScreen('chat');
+              }}
+            />
+          )}
+
+          {currentScreen === 'group_info' && selectedChatId && (
+            <GroupInfoScreen 
+              groupId={selectedChatId}
+              socket={socket}
+              onBack={() => setCurrentScreen('chat')}
+              onGroupDeleted={() => {
+                setSelectedChatId(null);
+                setCurrentScreen('main');
+              }}
             />
           )}
         </div>
