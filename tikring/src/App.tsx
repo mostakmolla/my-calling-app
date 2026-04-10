@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { MessageSquare, Compass, Users, Phone } from 'lucide-react';
+import { MessageSquare, Compass, Users, Phone, User } from 'lucide-react';
 import HomeScreen from './components/HomeScreen';
 import ChatScreen from './components/ChatScreen';
 import VideoCall from './components/VideoCall';
@@ -33,6 +33,7 @@ export default function App() {
   // WebRTC & Socket State
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState<any[]>([]);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
@@ -70,12 +71,19 @@ export default function App() {
         profile = defaultProfile;
       }
 
-      const newSocket = io();
+      const newSocket = io({
+        transports: ['websocket', 'polling'],
+        reconnectionAttempts: 20,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
+        timeout: 20000,
+      });
       setSocket(newSocket);
 
       newSocket.on('connect', () => {
         setIsConnected(true);
-        console.log('Socket connected, registering user...');
+        setIsConnecting(false);
+        console.log('✅ Connected to Server (ID:', newSocket.id, ')');
         newSocket.emit('register', {
           username: profile?.name,
           phone: profile?.phone
@@ -83,13 +91,20 @@ export default function App() {
       });
 
       newSocket.on('connect_error', (err) => {
-        console.error('Socket connection error:', err);
+        console.error('❌ Connection Error:', err.message);
         setIsConnected(false);
+        setIsConnecting(false);
+      });
+
+      newSocket.on('reconnecting', (attemptNumber) => {
+        console.log('🔄 Reconnecting... Attempt:', attemptNumber);
+        setIsConnecting(true);
       });
 
       newSocket.on('disconnect', (reason) => {
-        console.log('Socket disconnected:', reason);
+        console.log('⚠️ Disconnected:', reason);
         setIsConnected(false);
+        setIsConnecting(false);
       });
 
       newSocket.on('user_list', (users: any[]) => {
@@ -437,6 +452,14 @@ export default function App() {
     }
   };
 
+  const handleReconnect = () => {
+    if (socket) {
+      console.log('Manual reconnection triggered...');
+      setIsConnecting(true);
+      socket.connect();
+    }
+  };
+
   const renderMainContent = () => {
     switch (activeTab) {
       case 'chats':
@@ -445,6 +468,8 @@ export default function App() {
             socket={socket}
             onlineUsers={onlineUsers}
             isConnected={isConnected}
+            isConnecting={isConnecting}
+            onReconnect={handleReconnect}
             onChatSelect={async (id) => {
               setSelectedChatId(id);
               const chat = await getChat(id);
@@ -593,6 +618,9 @@ export default function App() {
             </button>
             <button onClick={() => setActiveTab('contacts')} className="flex flex-col items-center gap-1">
               <Users className={cn("w-6 h-6", activeTab === 'contacts' ? "fill-white text-white" : "text-white/70")} />
+            </button>
+            <button onClick={() => setCurrentScreen('profile')} className="flex flex-col items-center gap-1">
+              <User className={cn("w-6 h-6", currentScreen === 'profile' ? "fill-white text-white" : "text-white/70")} />
             </button>
           </nav>
         )}

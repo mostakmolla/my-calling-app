@@ -12,9 +12,21 @@ interface HomeScreenProps {
   socket: any;
   onlineUsers: any[];
   isConnected: boolean;
+  isConnecting: boolean;
+  onReconnect: () => void;
 }
 
-export default function HomeScreen({ onChatSelect, onCallSelect, onProfileOpen, onCreateGroup, socket, onlineUsers, isConnected }: HomeScreenProps) {
+export default function HomeScreen({ 
+  onChatSelect, 
+  onCallSelect, 
+  onProfileOpen, 
+  onCreateGroup, 
+  socket, 
+  onlineUsers, 
+  isConnected,
+  isConnecting,
+  onReconnect
+}: HomeScreenProps) {
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeTab, setActiveTab] = useState('chats');
   const [userProfile, setUserProfile] = useState<any>(null);
@@ -122,12 +134,21 @@ export default function HomeScreen({ onChatSelect, onCallSelect, onProfileOpen, 
       ));
     };
 
+    const handleUserList = (users: any[]) => {
+      setChats(prev => prev.map(chat => ({
+        ...chat,
+        isOnline: users.some(u => u.phone === chat.phone)
+      })));
+    };
+
     socket.on('receive_message', handleUpdate);
     socket.on('user_status_change', handleStatusChange);
+    socket.on('user_list', handleUserList);
 
     return () => {
       socket.off('receive_message', handleUpdate);
       socket.off('user_status_change', handleStatusChange);
+      socket.off('user_list', handleUserList);
     };
   }, [socket]);
 
@@ -197,13 +218,28 @@ export default function HomeScreen({ onChatSelect, onCallSelect, onProfileOpen, 
         <button className="p-1" onClick={onProfileOpen}>
           <Menu className="w-6 h-6 text-primary" />
         </button>
-        <div className="flex items-center gap-1 cursor-pointer group" onClick={onProfileOpen}>
-          <h1 className="text-2xl font-bold text-primary lowercase tracking-tighter group-hover:scale-105 transition-transform italic">TikRing</h1>
-          {isConnected ? (
-            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse ml-1" title="Connected" />
-          ) : (
-            <div className="w-2 h-2 bg-red-500 rounded-full ml-1" title="Disconnected" />
-          )}
+        <div className="flex flex-col items-center cursor-pointer group" onClick={onProfileOpen}>
+          <h1 className="text-2xl font-bold text-primary lowercase tracking-tighter group-hover:scale-105 transition-transform italic leading-none">TikRing</h1>
+          <div 
+            className="flex items-center gap-1 mt-0.5 cursor-pointer hover:opacity-80 transition-opacity"
+            onClick={(e) => {
+              if (!isConnected && !isConnecting) {
+                e.stopPropagation();
+                onReconnect();
+              }
+            }}
+          >
+            <span className="text-[9px] font-bold text-text-secondary uppercase tracking-widest">
+              ID: {userProfile?.phone || '...'}
+            </span>
+            {isConnecting ? (
+              <div className="w-1.5 h-1.5 border-t-2 border-primary rounded-full animate-spin" />
+            ) : isConnected ? (
+              <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" title="Connected" />
+            ) : (
+              <div className="w-1.5 h-1.5 bg-red-500 rounded-full" title="Click to reconnect" />
+            )}
+          </div>
         </div>
         <button className="p-1">
           <Search className="w-6 h-6 text-primary" />
@@ -287,7 +323,24 @@ export default function HomeScreen({ onChatSelect, onCallSelect, onProfileOpen, 
 
       {/* Chat List */}
       <div className="flex-1 overflow-y-auto">
-        {chats.map((chat) => (
+        {chats.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full p-8 text-center">
+            <div className="w-20 h-20 bg-surface rounded-full flex items-center justify-center mb-4">
+              <MessageSquare className="w-10 h-10 text-primary/40" />
+            </div>
+            <h3 className="text-lg font-bold text-text-primary mb-2">No chats yet</h3>
+            <p className="text-sm text-text-secondary mb-6">Start a conversation with global users or create a group!</p>
+            {!isConnected && (
+              <button 
+                onClick={onReconnect}
+                disabled={isConnecting}
+                className="px-6 py-2 bg-primary text-white rounded-full font-bold shadow-lg active:scale-95 transition-transform disabled:opacity-50"
+              >
+                {isConnecting ? 'Connecting...' : 'Try Reconnect'}
+              </button>
+            )}
+          </div>
+        ) : chats.map((chat) => (
           <div 
             key={`chat-list-${chat.id}`}
             onClick={() => onChatSelect(chat.id)}

@@ -104,9 +104,20 @@ export default function FriendProfileScreen({ friend, onBack, onMessage, onCall,
   };
 
   const content = {
-    reels: [],
-    photos: [],
-    videos: []
+    reels: [
+      { id: 1, thumbnail: `https://picsum.photos/seed/${friend.id}r1/400/600`, views: '1.2k', type: 'reel' },
+      { id: 2, thumbnail: `https://picsum.photos/seed/${friend.id}r2/400/600`, views: '850', type: 'reel' },
+      { id: 3, thumbnail: `https://picsum.photos/seed/${friend.id}r3/400/600`, views: '2.4k', type: 'reel' },
+    ],
+    photos: [
+      { id: 1, url: `https://picsum.photos/seed/${friend.id}p1/400/400`, likes: '124', type: 'photo' },
+      { id: 2, url: `https://picsum.photos/seed/${friend.id}p2/400/400`, likes: '89', type: 'photo' },
+      { id: 3, url: `https://picsum.photos/seed/${friend.id}p3/400/400`, likes: '256', type: 'photo' },
+    ],
+    videos: [
+      { id: 1, thumbnail: `https://picsum.photos/seed/${friend.id}v1/600/400`, views: '3.1k', likes: '450', duration: '0:45', type: 'video' },
+      { id: 2, thumbnail: `https://picsum.photos/seed/${friend.id}v2/600/400`, views: '1.5k', likes: '210', duration: '1:20', type: 'video' },
+    ]
   };
 
   const renderTabContent = () => {

@@ -30,7 +30,9 @@ async function startServer() {
         // Broadcast that this user is now online
         io.emit("user_status_change", { phone, isOnline: true });
       }
+      // Send the full user list to everyone (including the new user)
       io.emit("user_list", Array.from(users.values()));
+      console.log(`User registered: ${username} (${phone})`);
     });
 
     socket.on("disconnect", () => {

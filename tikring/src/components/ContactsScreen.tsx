@@ -474,7 +474,7 @@ export default function ContactsScreen({ onContactSelect, onViewProfile, onBack,
           filteredContacts.map((contact) => (
             <div 
               key={`contact-list-${contact.id}`}
-              onClick={() => onContactSelect(contact.id)}
+              onClick={() => onViewProfile(contact.id)}
               className={cn(
                 "cursor-pointer transition-all active:scale-95",
                 viewMode === 'grid' 
