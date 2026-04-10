@@ -71,7 +71,7 @@ export default function App() {
         profile = defaultProfile;
       }
 
-      const newSocket = io({
+      const newSocket = io('https://my-calling-app-production.up.railway.app',{
         transports: ['websocket', 'polling'],
         reconnectionAttempts: 20,
         reconnectionDelay: 1000,
