@@ -32,6 +32,7 @@ export default function App() {
   
   // WebRTC & Socket State
   const [socket, setSocket] = useState<Socket | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState<any[]>([]);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
@@ -73,10 +74,22 @@ export default function App() {
       setSocket(newSocket);
 
       newSocket.on('connect', () => {
+        setIsConnected(true);
+        console.log('Socket connected, registering user...');
         newSocket.emit('register', {
           username: profile?.name,
           phone: profile?.phone
         });
+      });
+
+      newSocket.on('connect_error', (err) => {
+        console.error('Socket connection error:', err);
+        setIsConnected(false);
+      });
+
+      newSocket.on('disconnect', (reason) => {
+        console.log('Socket disconnected:', reason);
+        setIsConnected(false);
       });
 
       newSocket.on('user_list', (users: any[]) => {
@@ -171,15 +184,16 @@ export default function App() {
         }
 
         // Save the message to DB
+        const isMe = data.senderPhone === profile?.phone;
         const receivedMessage = {
           ...data.message,
           chatId: data.from, 
-          senderId: data.senderPhone || 'other' 
+          senderId: isMe ? 'me' : (data.senderPhone || 'other')
         };
         await saveMessage(receivedMessage);
 
-        // Show notification if not on chat screen for this user
-        if (currentScreenRef.current !== 'chat' || selectedChatIdRef.current !== data.from) {
+        // Show notification if not on chat screen for this user AND it's not from me
+        if (!isMe && (currentScreenRef.current !== 'chat' || selectedChatIdRef.current !== data.from)) {
           const toast = document.createElement('div');
           toast.className = 'fixed top-4 left-1/2 -translate-x-1/2 bg-primary text-white px-6 py-3 rounded-full shadow-2xl z-[100] font-bold animate-bounce';
           toast.innerText = `New message from ${chat?.name || data.from}`;
@@ -430,6 +444,7 @@ export default function App() {
           <HomeScreen 
             socket={socket}
             onlineUsers={onlineUsers}
+            isConnected={isConnected}
             onChatSelect={async (id) => {
               setSelectedChatId(id);
               const chat = await getChat(id);
@@ -494,6 +509,7 @@ export default function App() {
             <ChatScreen 
               chatId={selectedChatId}
               socket={socket}
+              isConnected={isConnected}
               onBack={() => setCurrentScreen('main')}
               onCall={(type) => startCall(type)}
               onViewProfile={async () => {

@@ -939,13 +939,22 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
           </button>
           <h2 className="text-lg font-bold text-text-primary">Profile</h2>
         </div>
-        <button 
-          onClick={handleSave}
-          disabled={isSaving}
-          className="text-primary font-bold flex items-center gap-1"
-        >
-          {isSaving ? 'Saving...' : <><Save className="w-5 h-5" /> Save</>}
-        </button>
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={() => setIsQrModalOpen(true)}
+            className="p-2 bg-surface rounded-xl text-text-secondary hover:text-primary transition-colors"
+            title="My QR Code"
+          >
+            <QrCode className="w-5 h-5" />
+          </button>
+          <button 
+            onClick={handleSave}
+            disabled={isSaving}
+            className="text-primary font-bold flex items-center gap-1"
+          >
+            {isSaving ? 'Saving...' : <><Save className="w-5 h-5" /> Save</>}
+          </button>
+        </div>
       </header>
 
       <div className="flex-1 overflow-y-auto">
@@ -1489,50 +1498,66 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
                       if (navigator.share) {
                         try {
                           const blob = await (await fetch(url)).blob();
-                          const file = new File([blob], 'tikring-qr.png', { type: 'image/png' });
+                          const file = new File([blob], 'connectme-qr.png', { type: 'image/png' });
                           await navigator.share({
-                            title: 'My TikRing QR Code',
-                            text: `Scan this to add me on TikRing: ${phone}`,
+                            title: 'My ConnectMe QR Code',
+                            text: `Scan this to add me on ConnectMe: ${phone}`,
                             files: [file]
                           });
                         } catch (err) {
-                          // Fallback to download if share fails or is cancelled
                           const link = document.createElement('a');
-                          link.download = 'my-tikring-qr.png';
+                          link.download = 'my-connectme-qr.png';
                           link.href = url;
                           link.click();
                         }
                       } else {
                         const link = document.createElement('a');
-                        link.download = 'my-tikring-qr.png';
+                        link.download = 'my-connectme-qr.png';
                         link.href = url;
                         link.click();
                       }
                     }
                   }}
-                  className="flex-1 bg-surface py-3 rounded-xl font-bold text-primary flex items-center justify-center gap-2"
+                  className="flex-1 bg-surface py-3 rounded-xl font-bold text-primary flex items-center justify-center gap-2 active:scale-95 transition-transform"
                 >
-                  <Share2 className="w-4 h-4" />
-                  Share
+                  <ImageIcon className="w-4 h-4" />
+                  Image
                 </button>
                 <button 
-                  onClick={() => {
-                    const shareLink = `https://tikring.app/user/${phone || 'unknown'}`;
-                    navigator.clipboard.writeText(shareLink);
-                    const toast = document.createElement('div');
-                    toast.className = 'fixed bottom-20 left-1/2 -translate-x-1/2 bg-primary text-white px-6 py-3 rounded-full shadow-xl z-[200] font-bold';
-                    toast.innerText = 'Link Copied!';
-                    document.body.appendChild(toast);
-                    setTimeout(() => toast.remove(), 2000);
+                  onClick={async () => {
+                    const shareLink = `https://connectme.app/user/${phone || 'unknown'}`;
+                    if (navigator.share) {
+                      try {
+                        await navigator.share({
+                          title: 'ConnectMe Profile',
+                          text: `Add me on ConnectMe!`,
+                          url: shareLink
+                        });
+                      } catch (err) {
+                        navigator.clipboard.writeText(shareLink);
+                        const toast = document.createElement('div');
+                        toast.className = 'fixed bottom-20 left-1/2 -translate-x-1/2 bg-primary text-white px-6 py-3 rounded-full shadow-xl z-[200] font-bold';
+                        toast.innerText = 'Link Copied!';
+                        document.body.appendChild(toast);
+                        setTimeout(() => toast.remove(), 2000);
+                      }
+                    } else {
+                      navigator.clipboard.writeText(shareLink);
+                      const toast = document.createElement('div');
+                      toast.className = 'fixed bottom-20 left-1/2 -translate-x-1/2 bg-primary text-white px-6 py-3 rounded-full shadow-xl z-[200] font-bold';
+                      toast.innerText = 'Link Copied!';
+                      document.body.appendChild(toast);
+                      setTimeout(() => toast.remove(), 2000);
+                    }
                   }}
-                  className="flex-1 bg-surface py-3 rounded-xl font-bold text-primary flex items-center justify-center gap-2"
+                  className="flex-1 bg-surface py-3 rounded-xl font-bold text-primary flex items-center justify-center gap-2 active:scale-95 transition-transform"
                 >
-                  <Copy className="w-4 h-4" />
+                  <Share2 className="w-4 h-4" />
                   Link
                 </button>
                 <button 
                   onClick={() => setIsQrModalOpen(false)}
-                  className="flex-1 bg-primary py-3 rounded-xl font-bold text-white shadow-lg shadow-primary/20"
+                  className="flex-1 bg-primary py-3 rounded-xl font-bold text-white shadow-lg shadow-primary/20 active:scale-95 transition-transform"
                 >
                   Close
                 </button>

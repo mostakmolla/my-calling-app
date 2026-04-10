@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Menu, Camera, MessageSquare, Compass, Users, X, Upload, Play, Pause, Volume2, VolumeX, Music, CheckCircle2 } from 'lucide-react';
+import { Search, Menu, Camera, MessageSquare, Compass, Users, X, Upload, Play, Pause, Volume2, VolumeX, Music, CheckCircle2, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/src/lib/utils';
 import { getChats, Chat, getProfile, getMyStory, saveMyStory, addContact } from '@/src/lib/db';
@@ -11,9 +11,10 @@ interface HomeScreenProps {
   onCreateGroup: () => void;
   socket: any;
   onlineUsers: any[];
+  isConnected: boolean;
 }
 
-export default function HomeScreen({ onChatSelect, onCallSelect, onProfileOpen, onCreateGroup, socket, onlineUsers }: HomeScreenProps) {
+export default function HomeScreen({ onChatSelect, onCallSelect, onProfileOpen, onCreateGroup, socket, onlineUsers, isConnected }: HomeScreenProps) {
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeTab, setActiveTab] = useState('chats');
   const [userProfile, setUserProfile] = useState<any>(null);
@@ -198,6 +199,11 @@ export default function HomeScreen({ onChatSelect, onCallSelect, onProfileOpen, 
         </button>
         <div className="flex items-center gap-1 cursor-pointer group" onClick={onProfileOpen}>
           <h1 className="text-2xl font-bold text-primary lowercase tracking-tighter group-hover:scale-105 transition-transform italic">TikRing</h1>
+          {isConnected ? (
+            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse ml-1" title="Connected" />
+          ) : (
+            <div className="w-2 h-2 bg-red-500 rounded-full ml-1" title="Disconnected" />
+          )}
         </div>
         <button className="p-1">
           <Search className="w-6 h-6 text-primary" />
@@ -207,12 +213,17 @@ export default function HomeScreen({ onChatSelect, onCallSelect, onProfileOpen, 
       {/* Story Bar */}
       <div className="flex overflow-x-auto py-4 px-4 gap-4 no-scrollbar border-b border-gray-50">
         <div className="flex flex-col items-center flex-shrink-0 gap-1">
-          <button 
-            onClick={onCreateGroup}
-            className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center border-2 border-dashed border-primary/30 transition-transform active:scale-90"
-          >
-            <Users className="w-6 h-6 text-primary" />
-          </button>
+          <div className="relative">
+            <button 
+              onClick={onCreateGroup}
+              className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center border-2 border-dashed border-primary/30 transition-transform active:scale-90"
+            >
+              <Users className="w-6 h-6 text-primary" />
+            </button>
+            <div className="absolute -bottom-1 -right-1 bg-primary text-white rounded-full p-0.5 border-2 border-white">
+              <Plus className="w-3 h-3" />
+            </div>
+          </div>
           <span className="text-[11px] text-primary font-bold">New Group</span>
         </div>
         
@@ -239,11 +250,11 @@ export default function HomeScreen({ onChatSelect, onCallSelect, onProfileOpen, 
 
         {stories.map((story) => (
           <div key={`story-bar-${story.id}`} className="flex flex-col items-center flex-shrink-0 gap-1">
-            <div className="relative" onClick={() => handleStoryClick(story)}>
+            <div className="relative">
               <div className={cn(
                 "w-14 h-14 rounded-full p-0.5 border-2 cursor-pointer transition-transform active:scale-90",
                 (story.unread || (story.isMe && story.hasStory)) ? "border-primary" : "border-gray-200"
-              )}>
+              )} onClick={() => handleStoryClick(story)}>
                 <img 
                   src={story.avatar} 
                   alt={story.name} 
@@ -251,10 +262,17 @@ export default function HomeScreen({ onChatSelect, onCallSelect, onProfileOpen, 
                   referrerPolicy="no-referrer"
                 />
               </div>
-              {story.isMe && !story.hasStory && (
-                <div className="absolute bottom-0 right-0 bg-primary rounded-full p-1 border-2 border-white">
-                  <Camera className="w-3 h-3 text-white" />
-                </div>
+              {story.isMe && (
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleAddStory();
+                  }}
+                  className="absolute bottom-0 right-0 bg-primary text-white rounded-full p-1 border-2 border-white shadow-lg transition-transform active:scale-75"
+                  title="Fast Story"
+                >
+                  <Plus className="w-3 h-3" />
+                </button>
               )}
               {story.unread > 0 && (
                 <div className="absolute -top-1 -right-1 bg-primary text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full border-2 border-white">

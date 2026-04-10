@@ -55,15 +55,18 @@ async function startServer() {
 
     // WebRTC Signaling
     socket.on("offer", ({ to, offer }) => {
-      socket.to(to).emit("offer", { from: socket.id, offer });
+      const sender = users.get(socket.id);
+      socket.to(to).emit("offer", { from: sender?.phone || socket.id, offer });
     });
 
     socket.on("answer", ({ to, answer }) => {
-      socket.to(to).emit("answer", { from: socket.id, answer });
+      const sender = users.get(socket.id);
+      socket.to(to).emit("answer", { from: sender?.phone || socket.id, answer });
     });
 
     socket.on("ice_candidate", ({ to, candidate }) => {
-      socket.to(to).emit("ice_candidate", { from: socket.id, candidate });
+      const sender = users.get(socket.id);
+      socket.to(to).emit("ice_candidate", { from: sender?.phone || socket.id, candidate });
     });
 
     // Group signaling

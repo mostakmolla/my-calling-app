@@ -11,12 +11,13 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 interface ChatScreenProps {
   chatId: string;
   socket: Socket | null;
+  isConnected: boolean;
   onBack: () => void;
   onCall: (type: 'video' | 'audio') => void;
   onViewProfile: () => void;
 }
 
-export default function ChatScreen({ chatId, socket, onBack, onCall, onViewProfile }: ChatScreenProps) {
+export default function ChatScreen({ chatId, socket, isConnected, onBack, onCall, onViewProfile }: ChatScreenProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [chat, setChat] = useState<Chat | null>(null);
   const [group, setGroup] = useState<Group | null>(null);
@@ -452,7 +453,14 @@ export default function ChatScreen({ chatId, socket, onBack, onCall, onViewProfi
             )}
           </div>
           <div>
-            <h3 className="text-sm font-bold text-text-primary">{chat?.name || 'Loading...'}</h3>
+            <div className="flex items-center gap-1">
+              <h3 className="text-sm font-bold text-text-primary">{chat?.name || 'Loading...'}</h3>
+              {isConnected ? (
+                <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" title="Connected" />
+              ) : (
+                <div className="w-1.5 h-1.5 bg-red-500 rounded-full" title="Disconnected" />
+              )}
+            </div>
             <span className="text-[10px] text-online font-medium">
               {isTyping ? 'Typing...' : (chat?.type === 'group' ? `${group?.members.length || 0} members` : (chat?.isOnline ? 'Online' : 'Offline'))}
             </span>
