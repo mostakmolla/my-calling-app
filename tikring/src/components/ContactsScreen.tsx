@@ -498,7 +498,7 @@ export default function ContactsScreen({ onContactSelect, onViewProfile, onBack,
                   )}
                   referrerPolicy="no-referrer"
                 />
-                {contact.isOnline && (
+                {(contact.isOnline || onlineUsers.some(u => u.phone === contact.phone)) && (
                   <div className={cn(
                     "absolute bottom-0 right-0 bg-online rounded-full border-2 border-white",
                     viewMode === 'grid' ? "w-4 h-4" : "w-3 h-3"
@@ -532,7 +532,7 @@ export default function ContactsScreen({ onContactSelect, onViewProfile, onBack,
                 {viewMode === 'list' && (
                   <div className="flex items-center justify-between">
                     <p className="text-[10px] text-online font-medium">
-                      {contact.isOnline ? 'Online' : 'Offline'}
+                      {(contact.isOnline || onlineUsers.some(u => u.phone === contact.phone)) ? 'Online' : 'Offline'}
                     </p>
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       {contact.status === 'blocked' ? (

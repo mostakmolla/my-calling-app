@@ -142,11 +142,13 @@ export default function HomeScreen({
     };
 
     socket.on('receive_message', handleUpdate);
+    socket.on('message_read', handleUpdate);
     socket.on('user_status_change', handleStatusChange);
     socket.on('user_list', handleUserList);
 
     return () => {
       socket.off('receive_message', handleUpdate);
+      socket.off('message_read', handleUpdate);
       socket.off('user_status_change', handleStatusChange);
       socket.off('user_list', handleUserList);
     };
@@ -353,7 +355,7 @@ export default function HomeScreen({
                 className="w-14 h-14 rounded-full object-cover"
                 referrerPolicy="no-referrer"
               />
-              {chat.isOnline && (
+              {(chat.isOnline || onlineUsers.some(u => u.phone === chat.phone)) && (
                 <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-online rounded-full border-2 border-white" />
               )}
             </div>

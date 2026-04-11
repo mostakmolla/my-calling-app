@@ -156,6 +156,42 @@ export const deleteGroup = async (id: string) => {
   await tx.done;
 };
 
+export const updateMessageStatus = async (messageId: string, status: 'sent' | 'delivered' | 'read') => {
+  const db = await getDB();
+  const message = await db.get('messages', messageId);
+  if (message) {
+    message.status = status;
+    await db.put('messages', message);
+  }
+};
+
+export const markAllMessagesAsRead = async (chatId: string) => {
+  const db = await getDB();
+  const tx = db.transaction(['messages', 'chats'], 'readwrite');
+  const messageStore = tx.objectStore('messages');
+  const chatStore = tx.objectStore('chats');
+  
+  const index = messageStore.index('chatId');
+  let cursor = await index.openCursor(IDBKeyRange.only(chatId));
+  
+  while (cursor) {
+    const message = cursor.value;
+    if (message.senderId !== 'me' && message.status !== 'read') {
+      message.status = 'read';
+      await cursor.update(message);
+    }
+    cursor = await cursor.continue();
+  }
+  
+  const chat = await chatStore.get(chatId);
+  if (chat) {
+    chat.unreadCount = 0;
+    await chatStore.put(chat);
+  }
+  
+  await tx.done;
+};
+
 export const saveMessage = async (message: Message) => {
   const db = await getDB();
   await db.put('messages', message);
@@ -165,7 +201,7 @@ export const saveMessage = async (message: Message) => {
   if (chat) {
     chat.lastMessage = message.text;
     chat.lastTimestamp = message.timestamp;
-    if (message.senderId !== 'me') {
+    if (message.senderId !== 'me' && message.status !== 'read') {
       chat.unreadCount += 1;
     }
     await db.put('chats', chat);

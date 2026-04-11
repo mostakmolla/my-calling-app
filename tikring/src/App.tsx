@@ -10,7 +10,7 @@ import FriendProfileScreen from './components/FriendProfileScreen';
 import CallHistoryScreen from './components/CallHistoryScreen';
 import CreateGroupScreen from './components/CreateGroupScreen';
 import GroupInfoScreen from './components/GroupInfoScreen';
-import { initDB, getChat, Chat, getProfile, saveProfile, addContact, saveMessage, Message, saveCallLog, CallLog, createGroup, Group } from './lib/db';
+import { initDB, getChat, Chat, getProfile, saveProfile, addContact, saveMessage, Message, saveCallLog, CallLog, createGroup, Group, updateMessageStatus, getMessages, markAllMessagesAsRead } from './lib/db';
 import { cn } from './lib/utils';
 
 const STUN_SERVERS = {
@@ -41,6 +41,7 @@ export default function App() {
   const [callerId, setCallerId] = useState<string | null>(null); // This will store the caller's phone number
   const [cameraFacingMode, setCameraFacingMode] = useState<'user' | 'environment'>('user');
   const peerConnection = useRef<RTCPeerConnection | null>(null);
+  const iceCandidateQueue = useRef<RTCIceCandidateInit[]>([]);
   const currentScreenRef = useRef(currentScreen);
   const selectedChatIdRef = useRef(selectedChatId);
 
@@ -71,7 +72,7 @@ export default function App() {
         profile = defaultProfile;
       }
 
-      const newSocket = io('https://my-calling-app-production.up.railway.app',{
+      const newSocket = io({
         transports: ['websocket', 'polling'],
         reconnectionAttempts: 20,
         reconnectionDelay: 1000,
@@ -108,8 +109,25 @@ export default function App() {
       });
 
       newSocket.on('user_list', (users: any[]) => {
+        console.log('👥 Received user list:', users.length, 'users online');
         // Filter out self
         setOnlineUsers(users.filter(u => u.phone !== profile?.phone));
+      });
+
+      newSocket.on('user_status_change', ({ phone, isOnline }) => {
+        console.log(`👤 User ${phone} is now ${isOnline ? 'online' : 'offline'}`);
+        setOnlineUsers(prev => {
+          if (isOnline) {
+            // Add to online users if not already there
+            if (!prev.find(u => u.phone === phone)) {
+              return [...prev, { phone, isOnline: true }];
+            }
+            return prev;
+          } else {
+            // Remove from online users
+            return prev.filter(u => u.phone !== phone);
+          }
+        });
       });
 
       newSocket.on('friend_request_received', async (fromUser) => {
@@ -136,7 +154,7 @@ export default function App() {
       });
 
       newSocket.on('offer', async ({ from, offer }) => {
-        // 'from' is the sender's phone number or socket ID
+        console.log('📞 Incoming offer from:', from);
         setCallerId(from);
         setIsIncomingCall(true);
         
@@ -153,19 +171,44 @@ export default function App() {
         
         setCurrentScreen('call');
         
-        peerConnection.current = new RTCPeerConnection(STUN_SERVERS);
-        await peerConnection.current.setRemoteDescription(new RTCSessionDescription(offer));
+        // Initialize peer connection for the incoming call
+        const pc = new RTCPeerConnection(STUN_SERVERS);
+        peerConnection.current = pc;
+        iceCandidateQueue.current = [];
+
+        pc.ontrack = (event) => {
+          console.log('🎬 Remote track received (Incoming)');
+          setRemoteStream(event.streams[0]);
+        };
+
+        pc.onicecandidate = (event) => {
+          if (event.candidate && newSocket) {
+            newSocket.emit('ice_candidate', { to: from, candidate: event.candidate });
+          }
+        };
+
+        await pc.setRemoteDescription(new RTCSessionDescription(offer));
+        
+        // Process any queued candidates
+        while (iceCandidateQueue.current.length > 0) {
+          const candidate = iceCandidateQueue.current.shift();
+          if (candidate) await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        }
       });
 
-    newSocket.on('answer', async ({ answer }) => {
-      if (peerConnection.current) {
-        await peerConnection.current.setRemoteDescription(new RTCSessionDescription(answer));
-      }
-    });
+      newSocket.on('answer', async ({ answer }) => {
+        console.log('✅ Received answer');
+        if (peerConnection.current) {
+          await peerConnection.current.setRemoteDescription(new RTCSessionDescription(answer));
+        }
+      });
 
       newSocket.on('ice_candidate', async ({ candidate }) => {
-        if (peerConnection.current) {
+        console.log('❄️ Received ICE candidate');
+        if (peerConnection.current && peerConnection.current.remoteDescription) {
           await peerConnection.current.addIceCandidate(new RTCIceCandidate(candidate));
+        } else {
+          iceCandidateQueue.current.push(candidate);
         }
       });
 
@@ -217,6 +260,29 @@ export default function App() {
         }
       });
 
+      newSocket.on('message_read', async (data: { from: string, messageId?: string, chatId: string, isSelfUpdate?: boolean }) => {
+        const targetChatId = data.chatId || data.from;
+        
+        if (data.isSelfUpdate) {
+          // This means I read messages on another device
+          // Mark all incoming messages in this chat as read and reset unreadCount
+          await markAllMessagesAsRead(targetChatId);
+        } else {
+          // This means the other person read my messages
+          if (data.messageId) {
+            await updateMessageStatus(data.messageId, 'read');
+          } else {
+            // All my messages in this chat read by the other person
+            const allMessages = await getMessages(targetChatId);
+            for (const msg of allMessages) {
+              if (msg.senderId === 'me' && msg.status !== 'read') {
+                await updateMessageStatus(msg.id, 'read');
+              }
+            }
+          }
+        }
+      });
+
     return () => {
       newSocket.disconnect();
     };
@@ -244,24 +310,27 @@ export default function App() {
       setLocalStream(stream);
       setCurrentScreen('call');
 
-      peerConnection.current = new RTCPeerConnection(STUN_SERVERS);
+      const pc = new RTCPeerConnection(STUN_SERVERS);
+      peerConnection.current = pc;
+      iceCandidateQueue.current = [];
       
       stream.getTracks().forEach(track => {
-        peerConnection.current?.addTrack(track, stream);
+        pc.addTrack(track, stream);
       });
 
-      peerConnection.current.ontrack = (event) => {
+      pc.ontrack = (event) => {
+        console.log('🎬 Remote track received (Outgoing)');
         setRemoteStream(event.streams[0]);
       };
 
-      peerConnection.current.onicecandidate = (event) => {
+      pc.onicecandidate = (event) => {
         if (event.candidate && socket && id) {
           socket.emit('ice_candidate', { to: id, candidate: event.candidate });
         }
       };
 
-      const offer = await peerConnection.current.createOffer();
-      await peerConnection.current.setLocalDescription(offer);
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
       
       if (socket && id) {
         socket.emit('offer', { to: id, offer });
@@ -274,27 +343,20 @@ export default function App() {
   const acceptCall = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: cameraFacingMode }, 
+        video: callType === 'video' ? { facingMode: cameraFacingMode } : false, 
         audio: true 
       });
       setLocalStream(stream);
       setIsIncomingCall(false);
 
-      if (!peerConnection.current) return;
+      if (!peerConnection.current) {
+        console.error('No peer connection available to accept call');
+        return;
+      }
 
       stream.getTracks().forEach(track => {
         peerConnection.current?.addTrack(track, stream);
       });
-
-      peerConnection.current.ontrack = (event) => {
-        setRemoteStream(event.streams[0]);
-      };
-
-      peerConnection.current.onicecandidate = (event) => {
-        if (event.candidate && socket && callerId) {
-          socket.emit('ice_candidate', { to: callerId, candidate: event.candidate });
-        }
-      };
 
       const answer = await peerConnection.current.createAnswer();
       await peerConnection.current.setLocalDescription(answer);
@@ -555,6 +617,7 @@ export default function App() {
             <FriendProfileScreen 
               friend={selectedFriend}
               socket={socket}
+              onlineUsers={onlineUsers}
               onBack={() => setCurrentScreen('chat')}
               onMessage={() => setCurrentScreen('chat')}
               onCall={(type) => startCall(type)}

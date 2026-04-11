@@ -21,11 +21,12 @@ interface FriendProfileScreenProps {
   onMessage: () => void;
   onCall: (type: 'video' | 'audio') => void;
   socket: Socket | null;
+  onlineUsers: any[];
 }
 
 type TabType = 'all' | 'reels' | 'photos' | 'videos';
 
-export default function FriendProfileScreen({ friend, onBack, onMessage, onCall, socket }: FriendProfileScreenProps) {
+export default function FriendProfileScreen({ friend, onBack, onMessage, onCall, socket, onlineUsers }: FriendProfileScreenProps) {
   const [activeTab, setActiveTab] = useState<TabType>('all');
   const [selectedMedia, setSelectedMedia] = useState<any>(null);
   const [showReactions, setShowReactions] = useState(false);
@@ -294,7 +295,7 @@ export default function FriendProfileScreen({ friend, onBack, onMessage, onCall,
               className="w-28 h-28 rounded-full object-cover border-4 border-white shadow-xl"
               referrerPolicy="no-referrer"
             />
-            {friend.isOnline && (
+            {(friend.isOnline || onlineUsers.some(u => u.phone === friend.phone)) && (
               <div className="absolute bottom-1 right-1 w-6 h-6 bg-online rounded-full border-4 border-white" />
             )}
           </div>

@@ -105,6 +105,26 @@ async function startServer() {
       const sender = users.get(socket.id);
       socket.to(to).emit("stop_typing", { from: sender?.phone || socket.id });
     });
+
+    socket.on("message_read", ({ to, messageId, chatId }) => {
+      const sender = users.get(socket.id);
+      const payload = { 
+        from: sender?.phone || socket.id, 
+        messageId, 
+        chatId: sender?.phone || chatId 
+      };
+      
+      // Notify the original sender
+      socket.to(to).emit("message_read", payload);
+      
+      // Notify other devices of the current user
+      if (sender?.phone) {
+        socket.to(sender.phone).emit("message_read", {
+          ...payload,
+          isSelfUpdate: true // Flag to indicate this is a sync for the user's own devices
+        });
+      }
+    });
   });
 
   // Vite middleware for development

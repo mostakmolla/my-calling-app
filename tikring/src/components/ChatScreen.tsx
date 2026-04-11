@@ -2,8 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Phone, Video, MoreVertical, Smile, Paperclip, Camera, Send, Mic, X, Play, Pause, ExternalLink, MapPin, Volume2, Loader2, Users } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/src/lib/utils';
-import { Message, saveMessage, getMessages, getChat, Chat, getGroup, Group } from '@/src/lib/db';
+import { Message, saveMessage, getMessages, getChat, Chat, getGroup, Group, markAllMessagesAsRead, updateMessageStatus } from '@/src/lib/db';
 import { Socket } from 'socket.io-client';
+import { Check, CheckCheck } from 'lucide-react';
 import { GoogleGenAI, Modality } from "@google/genai";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -52,9 +53,15 @@ export default function ChatScreen({ chatId, socket, isConnected, onBack, onCall
         const groupData = await getGroup(chatId);
         setGroup(groupData || null);
       }
+
+      // Mark messages as read when opening the chat
+      await markAllMessagesAsRead(chatId);
+      if (socket && chatData?.phone) {
+        socket.emit('message_read', { to: chatData.phone, chatId });
+      }
     };
     fetchData();
-  }, [chatId]);
+  }, [chatId, socket]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -71,13 +78,61 @@ export default function ChatScreen({ chatId, socket, isConnected, onBack, onCall
         const receivedMessage = {
           ...data.message,
           chatId: data.from,
-          senderId: data.senderPhone || 'other'
+          senderId: data.senderPhone || 'other',
+          status: 'read' as const // Mark as read since we are in the chat
         };
+        
+        // Save as read in DB
+        await saveMessage(receivedMessage);
+        
+        // Notify sender
+        if (socket && chat?.phone) {
+          socket.emit('message_read', { 
+            to: chat.phone, 
+            messageId: receivedMessage.id,
+            chatId 
+          });
+        }
+
         setMessages(prev => [...prev, receivedMessage]);
       }
     };
 
+    const handleMessageRead = async (data: { from: string, messageId?: string, chatId: string, isSelfUpdate?: boolean }) => {
+      const targetChatId = data.chatId || data.from;
+      if (targetChatId === chatId || data.from === chat?.phone) {
+        if (data.isSelfUpdate) {
+          // I read messages on another device
+          setMessages(prev => prev.map(msg => 
+            msg.senderId !== 'me' ? { ...msg, status: 'read' } : msg
+          ));
+        } else {
+          // The other person read my messages
+          if (data.messageId) {
+            // Single message read
+            await updateMessageStatus(data.messageId, 'read');
+            setMessages(prev => prev.map(msg => 
+              msg.id === data.messageId ? { ...msg, status: 'read' } : msg
+            ));
+          } else {
+            // All messages read
+            setMessages(prev => prev.map(msg => 
+              msg.senderId === 'me' ? { ...msg, status: 'read' } : msg
+            ));
+            // Update all sent messages in DB for this chat
+            const allMessages = await getMessages(chatId);
+            for (const msg of allMessages) {
+              if (msg.senderId === 'me' && msg.status !== 'read') {
+                await updateMessageStatus(msg.id, 'read');
+              }
+            }
+          }
+        }
+      }
+    };
+
     socket.on('receive_message', handleReceiveMessage);
+    socket.on('message_read', handleMessageRead);
     
     socket.on('typing', (data: { from: string }) => {
       if (data.from === chat?.phone) {
@@ -93,6 +148,7 @@ export default function ChatScreen({ chatId, socket, isConnected, onBack, onCall
 
     return () => {
       socket.off('receive_message', handleReceiveMessage);
+      socket.off('message_read', handleMessageRead);
       socket.off('typing');
       socket.off('stop_typing');
     };
@@ -452,16 +508,16 @@ export default function ChatScreen({ chatId, socket, isConnected, onBack, onCall
               <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-online rounded-full border-2 border-white" />
             )}
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="flex items-center gap-1">
-              <h3 className="text-sm font-bold text-text-primary">{chat?.name || 'Loading...'}</h3>
+              <h3 className="text-sm font-bold text-text-primary truncate">{chat?.name || 'Loading...'}</h3>
               {isConnected ? (
-                <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" title="Connected" />
+                <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse flex-shrink-0" title="Connected" />
               ) : (
-                <div className="w-1.5 h-1.5 bg-red-500 rounded-full" title="Disconnected" />
+                <div className="w-1.5 h-1.5 bg-red-500 rounded-full flex-shrink-0" title="Disconnected" />
               )}
             </div>
-            <span className="text-[10px] text-online font-medium">
+            <span className="text-[10px] text-online font-medium block truncate">
               {isTyping ? 'Typing...' : (chat?.type === 'group' ? `${group?.members.length || 0} members` : (chat?.isOnline ? 'Online' : 'Offline'))}
             </span>
           </div>
@@ -573,9 +629,19 @@ export default function ChatScreen({ chatId, socket, isConnected, onBack, onCall
                 </div>
               )}
             </div>
-            <span className="text-[10px] text-text-secondary mt-1">
+            <span className="text-[10px] text-text-secondary mt-1 flex items-center gap-1">
               {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              {msg.senderId === 'me' && " ✓✓"}
+              {msg.senderId === 'me' && (
+                <span className="flex items-center">
+                  {msg.status === 'read' ? (
+                    <CheckCheck className="w-3 h-3 text-blue-500" />
+                  ) : msg.status === 'delivered' ? (
+                    <CheckCheck className="w-3 h-3 text-text-secondary" />
+                  ) : (
+                    <Check className="w-3 h-3 text-text-secondary" />
+                  )}
+                </span>
+              )}
             </span>
           </div>
         ))}
@@ -604,40 +670,42 @@ export default function ChatScreen({ chatId, socket, isConnected, onBack, onCall
           )}
         </AnimatePresence>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <button 
             onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-            className={cn("transition-colors", showEmojiPicker ? "text-primary" : "text-text-secondary")}
+            className={cn("transition-colors flex-shrink-0", showEmojiPicker ? "text-primary" : "text-text-secondary")}
           >
             <Smile className="w-6 h-6" />
           </button>
           
-          <div className="flex-1 bg-surface rounded-full px-4 py-2 flex items-center gap-2">
+          <div className="flex-1 bg-surface rounded-2xl px-3 py-1.5 flex items-center gap-2 min-w-0">
             <input 
               type="text" 
               value={inputText}
               onChange={handleInputChange}
               onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-              placeholder={isRecording ? `Recording... ${Math.floor(recordingDuration / 60)}:${(recordingDuration % 60).toString().padStart(2, '0')}` : "Write a message..."}
+              placeholder={isRecording ? `Recording... ${Math.floor(recordingDuration / 60)}:${(recordingDuration % 60).toString().padStart(2, '0')}` : "Message..."}
               className={cn(
-                "flex-1 bg-transparent border-none focus:outline-none text-sm text-text-primary",
+                "flex-1 bg-transparent border-none focus:outline-none text-sm text-text-primary min-w-0",
                 isRecording && "text-red-500 font-bold animate-pulse"
               )}
               disabled={isRecording}
             />
-            <button 
-              onClick={handleShareLocation}
-              className="text-text-secondary hover:text-primary transition-colors"
-              title="Share Location"
-            >
-              <MapPin className="w-5 h-5" />
-            </button>
-            <button 
-              onClick={() => fileInputRef.current?.click()}
-              className="text-text-secondary hover:text-primary transition-colors"
-            >
-              <Paperclip className="w-5 h-5" />
-            </button>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button 
+                onClick={handleShareLocation}
+                className="text-text-secondary hover:text-primary transition-colors"
+                title="Share Location"
+              >
+                <MapPin className="w-5 h-5" />
+              </button>
+              <button 
+                onClick={() => fileInputRef.current?.click()}
+                className="text-text-secondary hover:text-primary transition-colors"
+              >
+                <Paperclip className="w-5 h-5" />
+              </button>
+            </div>
           </div>
 
           <input 
@@ -657,32 +725,34 @@ export default function ChatScreen({ chatId, socket, isConnected, onBack, onCall
             capture="environment"
           />
 
-          {inputText.trim() ? (
-            <button 
-              onClick={handleSendMessage}
-              className="w-10 h-10 bg-primary rounded-full flex items-center justify-center text-white shadow-md active:scale-90 transition-transform"
-            >
-              <Send className="w-5 h-5" />
-            </button>
-          ) : (
-            <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {inputText.trim() ? (
               <button 
-                onClick={() => cameraInputRef.current?.click()}
-                className="text-text-secondary hover:text-primary transition-colors"
+                onClick={handleSendMessage}
+                className="w-10 h-10 bg-primary rounded-full flex items-center justify-center text-white shadow-md active:scale-90 transition-transform flex-shrink-0"
               >
-                <Camera className="w-6 h-6" />
+                <Send className="w-5 h-5" />
               </button>
-              <button 
-                onClick={toggleRecording}
-                className={cn(
-                  "w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300",
-                  isRecording ? "bg-red-500 text-white animate-pulse scale-110 shadow-lg" : "text-text-secondary"
-                )}
-              >
-                <Mic className="w-6 h-6" />
-              </button>
-            </div>
-          )}
+            ) : (
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => cameraInputRef.current?.click()}
+                  className="text-text-secondary hover:text-primary transition-colors p-1"
+                >
+                  <Camera className="w-6 h-6" />
+                </button>
+                <button 
+                  onClick={toggleRecording}
+                  className={cn(
+                    "w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300",
+                    isRecording ? "bg-red-500 text-white animate-pulse scale-110 shadow-lg" : "text-text-secondary hover:text-primary"
+                  )}
+                >
+                  <Mic className="w-6 h-6" />
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
