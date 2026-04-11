@@ -57,8 +57,12 @@ export default function VideoCall({
         remoteVideoRef.current.srcObject = localStream;
         remoteVideoRef.current.muted = false; // Unmute so they can hear themselves
       } else if (remoteStream) {
+        console.log('📺 Setting remote stream to video element');
         remoteVideoRef.current.srcObject = remoteStream;
         remoteVideoRef.current.muted = false;
+        remoteVideoRef.current.play().catch(err => {
+          console.warn('⚠️ Video play failed:', err);
+        });
       } else {
         remoteVideoRef.current.srcObject = null;
       }

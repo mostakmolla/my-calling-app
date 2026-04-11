@@ -230,7 +230,7 @@ export default function ContactsScreen({ onContactSelect, onViewProfile, onBack,
     setIsCreating(true);
     try {
       const contact: Chat = {
-        id: Date.now().toString(),
+        id: newContactPhone || Date.now().toString(),
         name: newContactName,
         phone: newContactPhone,
         avatar: `https://picsum.photos/seed/${Math.random()}/100`,
@@ -331,9 +331,9 @@ export default function ContactsScreen({ onContactSelect, onViewProfile, onBack,
   };
 
   return (
-    <div className="flex flex-col h-full bg-white max-w-md mx-auto shadow-2xl relative overflow-hidden">
+    <div className="flex flex-col h-full bg-white relative overflow-hidden">
       {/* Header */}
-      <header className="px-4 py-4 border-b border-gray-100 bg-white">
+      <header className="sticky top-0 z-30 px-4 py-4 border-b border-gray-100 bg-white shadow-sm">
         <div className="flex justify-between items-center mb-4">
           <button onClick={onBack} className="p-1">
             <ArrowLeft className="w-6 h-6 text-primary" />

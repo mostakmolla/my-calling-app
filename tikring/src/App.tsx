@@ -134,60 +134,106 @@ export default function App() {
         });
       });
 
-      newSocket.on('offer', async ({ from, offer }) => {
-        console.log('📞 Incoming offer from:', from);
-        setCallerId(from);
-        setIsIncomingCall(true);
+      newSocket.on('offer', async ({ from, offer, type }) => {
+        console.log('📞 Incoming offer from:', from, 'Type:', type);
         
-        const chat = await getChat(from);
-        if (chat) {
-          setSelectedChatName(chat.name);
-          setSelectedChatAvatar(chat.avatar);
-          setSelectedChatId(from);
-        } else {
-          setSelectedChatName(from);
-          setSelectedChatId(from);
+        // If we are already in a call or processing one, ignore
+        if (peerConnectionRef.current && peerConnectionRef.current.signalingState !== 'stable') {
+          console.warn('⚠️ Ignoring incoming offer: signaling already in progress');
+          return;
         }
-        
-        setCurrentScreen('call');
-        
-        // Initialize PeerConnection but don't add tracks yet (wait for accept)
-        const pc = new RTCPeerConnection(STUN_SERVERS);
-        peerConnectionRef.current = pc;
-        iceCandidateQueue.current = [];
 
-        pc.ontrack = (event) => {
-          console.log('🎬 Remote track received');
-          if (remoteVideoRef.current && event.streams[0]) {
-            remoteVideoRef.current.srcObject = event.streams[0];
+        // Set a temporary flag to prevent concurrent offer processing
+        if ((newSocket as any)._processingOffer) return;
+        (newSocket as any)._processingOffer = true;
+
+        try {
+          setCallerId(from);
+          setIsIncomingCall(true);
+          setCallType(type || 'video');
+
+          const chat = await getChat(from);
+          if (chat) {
+            setSelectedChatName(chat.name);
+            setSelectedChatAvatar(chat.avatar);
+            setSelectedChatId(from);
+          } else {
+            setSelectedChatName(from);
+            setSelectedChatId(from);
           }
-          setRemoteStream(event.streams[0]);
-        };
+          
+          setCurrentScreen('call');
+          
+          // Initialize PeerConnection
+          const pc = new RTCPeerConnection(STUN_SERVERS);
+          peerConnectionRef.current = pc;
+          iceCandidateQueue.current = [];
 
-        pc.onicecandidate = (event) => {
-          if (event.candidate) {
-            newSocket.emit('ice_candidate', { to: from, candidate: event.candidate });
+          pc.ontrack = (event) => {
+            console.log('🎬 Remote track received (Callee)');
+            const stream = event.streams[0] || new MediaStream([event.track]);
+            setRemoteStream(stream);
+          };
+
+          pc.onicecandidate = (event) => {
+            if (event.candidate) {
+              newSocket.emit('ice_candidate', { to: from, candidate: event.candidate });
+            }
+          };
+
+          await pc.setRemoteDescription(new RTCSessionDescription(offer));
+          
+          // Process queued candidates
+          while (iceCandidateQueue.current.length > 0) {
+            const candidate = iceCandidateQueue.current.shift();
+            if (candidate) {
+              try {
+                await pc.addIceCandidate(new RTCIceCandidate(candidate));
+              } catch (e) {
+                console.warn('Failed to add queued ICE candidate:', e);
+              }
+            }
           }
-        };
-
-        await pc.setRemoteDescription(new RTCSessionDescription(offer));
-        
-        // Process queued candidates
-        while (iceCandidateQueue.current.length > 0) {
-          const candidate = iceCandidateQueue.current.shift();
-          if (candidate) await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        } catch (err) {
+          console.error('Error handling offer:', err);
+        } finally {
+          (newSocket as any)._processingOffer = false;
         }
       });
 
       newSocket.on('answer', async ({ answer }) => {
         console.log('✅ Received answer');
-        if (peerConnectionRef.current) {
-          await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(answer));
-          
-          while (iceCandidateQueue.current.length > 0) {
-            const candidate = iceCandidateQueue.current.shift();
-            if (candidate) await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate));
+        const pc = peerConnectionRef.current;
+        if (pc && pc.signalingState === 'have-local-offer') {
+          // Prevent concurrent setRemoteDescription calls for the same answer
+          if ((pc as any)._isSettingRemoteDescription) return;
+          (pc as any)._isSettingRemoteDescription = true;
+
+          try {
+            await pc.setRemoteDescription(new RTCSessionDescription(answer));
+            
+            while (iceCandidateQueue.current.length > 0) {
+              const candidate = iceCandidateQueue.current.shift();
+              if (candidate) {
+                try {
+                  await pc.addIceCandidate(new RTCIceCandidate(candidate));
+                } catch (e) {
+                  console.warn('Failed to add queued ICE candidate:', e);
+                }
+              }
+            }
+          } catch (err: any) {
+            // If the error is just that we're already stable, we can ignore it
+            if (pc.signalingState === 'stable') {
+              console.log('✨ Connection already stable, ignoring duplicate answer');
+            } else {
+              console.error('❌ Error setting remote answer:', err);
+            }
+          } finally {
+            (pc as any)._isSettingRemoteDescription = false;
           }
+        } else {
+          console.warn('⚠️ Received answer in wrong state:', pc?.signalingState);
         }
       });
 
@@ -273,6 +319,8 @@ export default function App() {
       if (!id) return;
 
       const chat = await getChat(id);
+      const targetPhone = chat?.phone || id; // Use phone if available, fallback to id
+
       setSelectedChatId(id);
       setSelectedChatName(chat?.name || "User");
       setSelectedChatAvatar(chat?.avatar || "");
@@ -300,16 +348,14 @@ export default function App() {
       // 4. Handle remote tracks
       pc.ontrack = (event) => {
         console.log('🎬 Remote track received (Caller)');
-        if (remoteVideoRef.current && event.streams[0]) {
-          remoteVideoRef.current.srcObject = event.streams[0];
-        }
-        setRemoteStream(event.streams[0]);
+        const stream = event.streams[0] || new MediaStream([event.track]);
+        setRemoteStream(stream);
       };
 
       // 5. Handle ICE candidates
       pc.onicecandidate = (event) => {
         if (event.candidate && socket) {
-          socket.emit('ice_candidate', { to: id, candidate: event.candidate });
+          socket.emit('ice_candidate', { to: targetPhone, candidate: event.candidate });
         }
       };
 
@@ -318,8 +364,8 @@ export default function App() {
       await pc.setLocalDescription(offer);
       
       if (socket) {
-        socket.emit('join_call', { toPhone: id });
-        socket.emit('offer', { to: id, offer });
+        socket.emit('join_call', { toPhone: targetPhone });
+        socket.emit('offer', { to: targetPhone, offer, type });
       }
     } catch (err) {
       console.error('Error starting call:', err);
@@ -360,7 +406,9 @@ export default function App() {
     const duration = callStartTime ? Math.floor((Date.now() - callStartTime) / 1000) : 0;
     
     if (selectedChatId && socket) {
-      socket.emit('end_call', { to: selectedChatId });
+      const chat = await getChat(selectedChatId);
+      const targetPhone = chat?.phone || selectedChatId;
+      socket.emit('end_call', { to: targetPhone });
       
       const log: CallLog = {
         id: Date.now().toString(),

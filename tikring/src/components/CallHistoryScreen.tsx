@@ -54,8 +54,8 @@ export default function CallHistoryScreen({ onBack, onCall }: CallHistoryScreenP
   };
 
   return (
-    <div className="flex flex-col h-full bg-white max-w-md mx-auto shadow-2xl relative overflow-hidden">
-      <header className="flex items-center gap-4 px-4 py-4 border-b border-gray-100 bg-white sticky top-0 z-10">
+    <div className="flex flex-col h-full bg-white relative overflow-hidden">
+      <header className="sticky top-0 z-30 flex items-center gap-4 px-4 py-4 border-b border-gray-100 bg-white shadow-sm">
         <button onClick={onBack} className="p-1 hover:bg-surface rounded-full transition-colors">
           <ArrowLeft className="w-6 h-6 text-primary" />
         </button>

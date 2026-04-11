@@ -350,33 +350,33 @@ export default function FriendProfileScreen({ friend, onBack, onMessage, onCall,
             </button>
           )}
           
-          <div className="flex gap-4 mt-6">
+          <div className="flex gap-6 mt-6">
             <button 
               onClick={onMessage}
-              className="flex flex-col items-center gap-1.5"
+              className="flex flex-col items-center gap-2 group active:scale-95 transition-transform"
             >
-              <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center text-primary">
-                <MessageSquare className="w-5 h-5" />
+              <div className="w-14 h-14 bg-primary/10 rounded-2xl flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-all shadow-sm">
+                <MessageSquare className="w-6 h-6" />
               </div>
-              <span className="text-[10px] font-bold text-text-secondary uppercase">Message</span>
+              <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Message</span>
             </button>
             <button 
               onClick={() => onCall('audio')}
-              className="flex flex-col items-center gap-1.5"
+              className="flex flex-col items-center gap-2 group active:scale-95 transition-transform"
             >
-              <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center text-primary">
-                <Phone className="w-5 h-5" />
+              <div className="w-14 h-14 bg-primary/10 rounded-2xl flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-all shadow-sm">
+                <Phone className="w-6 h-6" />
               </div>
-              <span className="text-[10px] font-bold text-text-secondary uppercase">Audio</span>
+              <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Audio</span>
             </button>
             <button 
               onClick={() => onCall('video')}
-              className="flex flex-col items-center gap-1.5"
+              className="flex flex-col items-center gap-2 group active:scale-95 transition-transform"
             >
-              <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center text-primary">
-                <Video className="w-5 h-5" />
+              <div className="w-14 h-14 bg-primary/10 rounded-2xl flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-all shadow-sm">
+                <Video className="w-6 h-6" />
               </div>
-              <span className="text-[10px] font-bold text-text-secondary uppercase">Video</span>
+              <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Video</span>
             </button>
           </div>
         </div>

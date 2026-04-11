@@ -68,9 +68,9 @@ export default function CreateGroupScreen({ onBack, onGroupCreated, socket }: Cr
   );
 
   return (
-    <div className="flex flex-col h-full bg-white max-w-md mx-auto shadow-2xl relative overflow-hidden">
+    <div className="flex flex-col h-full bg-white relative overflow-hidden">
       {/* Header */}
-      <header className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-white z-10">
+      <header className="sticky top-0 z-30 flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-white shadow-sm">
         <div className="flex items-center gap-3">
           <button onClick={step === 1 ? onBack : () => setStep(1)}>
             <ArrowLeft className="w-6 h-6 text-primary" />

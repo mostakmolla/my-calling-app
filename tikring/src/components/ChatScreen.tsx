@@ -519,9 +519,9 @@ export default function ChatScreen({ chatId, socket, isConnected, onBack, onCall
   };
 
   return (
-    <div className="flex flex-col h-full bg-white max-w-md mx-auto shadow-2xl relative overflow-hidden">
+    <div className="flex flex-col h-full bg-white relative overflow-hidden">
       {/* Header */}
-      <header className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-white z-10">
+      <header className="sticky top-0 z-30 flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-white shadow-sm">
         <div className="flex items-center gap-3">
           <button onClick={onBack}>
             <ArrowLeft className="w-6 h-6 text-primary" />
@@ -551,14 +551,26 @@ export default function ChatScreen({ chatId, socket, isConnected, onBack, onCall
             </span>
           </div>
         </div>
-        <div className="flex items-center gap-4">
-          <button onClick={() => onCall('audio')}>
+        <div className="flex items-center gap-1">
+          <button 
+            onClick={() => onCall('audio')}
+            className="p-2.5 hover:bg-surface rounded-full transition-colors active:scale-90"
+            aria-label="Audio Call"
+          >
             <Phone className="w-5 h-5 text-primary" />
           </button>
-          <button onClick={() => onCall('video')}>
+          <button 
+            onClick={() => onCall('video')}
+            className="p-2.5 hover:bg-surface rounded-full transition-colors active:scale-90"
+            aria-label="Video Call"
+          >
             <Video className="w-5 h-5 text-primary" />
           </button>
-          <button onClick={onViewProfile}>
+          <button 
+            onClick={onViewProfile}
+            className="p-2.5 hover:bg-surface rounded-full transition-colors active:scale-90"
+            aria-label="More Options"
+          >
             <MoreVertical className="w-5 h-5 text-primary" />
           </button>
         </div>

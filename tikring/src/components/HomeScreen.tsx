@@ -214,9 +214,9 @@ export default function HomeScreen({
   };
 
   return (
-    <div className="flex flex-col h-full bg-white max-w-md mx-auto shadow-2xl relative overflow-hidden">
+    <div className="flex flex-col h-full bg-white relative overflow-hidden">
       {/* Top App Bar */}
-      <header className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+      <header className="sticky top-0 z-30 flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-white shadow-sm">
         <button className="p-1" onClick={onProfileOpen}>
           <Menu className="w-6 h-6 text-primary" />
         </button>
