@@ -10,8 +10,9 @@ import FriendProfileScreen from './components/FriendProfileScreen';
 import CallHistoryScreen from './components/CallHistoryScreen';
 import CreateGroupScreen from './components/CreateGroupScreen';
 import GroupInfoScreen from './components/GroupInfoScreen';
-import { initDB, getChat, Chat, getProfile, saveProfile, addContact, saveMessage, Message, saveCallLog, CallLog, createGroup, Group, updateMessageStatus, getMessages, markAllMessagesAsRead } from './lib/db';
+import { initDB, getChat, Chat, getProfile, saveProfile, addContact, saveMessage, Message, saveCallLog, CallLog, createGroup, Group, updateMessageStatus, getMessages, markAllMessagesAsRead, getGroup, updateGroup, deleteGroup, deleteMessage } from './lib/db';
 import { cn } from './lib/utils';
+import { ringtone } from './lib/ringtone';
 
 const STUN_SERVERS = {
   iceServers: [
@@ -50,6 +51,14 @@ export default function App() {
   }, [currentScreen]);
 
   useEffect(() => {
+    if (isIncomingCall) {
+      ringtone.start();
+    } else {
+      ringtone.stop();
+    }
+  }, [isIncomingCall]);
+
+  useEffect(() => {
     selectedChatIdRef.current = selectedChatId;
   }, [selectedChatId]);
 
@@ -72,7 +81,7 @@ export default function App() {
         profile = defaultProfile;
       }
 
-      const newSocket = io('https://my-calling-app-production.up.railway.app',{
+      const newSocket = io(window.location.origin, {
         transports: ['websocket', 'polling'],
         reconnectionAttempts: 20,
         reconnectionDelay: 1000,
@@ -153,12 +162,16 @@ export default function App() {
         setTimeout(() => toast.remove(), 5000);
       });
 
+      newSocket.on('user_joined_call', ({ from }) => {
+        console.log('👤 Peer joined call:', from);
+        // This is useful if we want to auto-start something when the second person joins
+      });
+
       newSocket.on('offer', async ({ from, offer }) => {
         console.log('📞 Incoming offer from:', from);
         setCallerId(from);
         setIsIncomingCall(true);
         
-        // Try to find the chat to get the caller's name
         const chat = await getChat(from);
         if (chat) {
           setSelectedChatName(chat.name);
@@ -177,8 +190,10 @@ export default function App() {
         iceCandidateQueue.current = [];
 
         pc.ontrack = (event) => {
-          console.log('🎬 Remote track received (Incoming)');
-          setRemoteStream(event.streams[0]);
+          console.log('🎬 Remote track received (Callee)');
+          if (event.streams && event.streams[0]) {
+            setRemoteStream(event.streams[0]);
+          }
         };
 
         pc.onicecandidate = (event) => {
@@ -187,6 +202,7 @@ export default function App() {
           }
         };
 
+        // Set remote description BEFORE creating answer
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
         
         // Process any queued candidates
@@ -200,6 +216,12 @@ export default function App() {
         console.log('✅ Received answer');
         if (peerConnection.current) {
           await peerConnection.current.setRemoteDescription(new RTCSessionDescription(answer));
+          
+          // Process any queued candidates for the caller
+          while (iceCandidateQueue.current.length > 0) {
+            const candidate = iceCandidateQueue.current.shift();
+            if (candidate) await peerConnection.current.addIceCandidate(new RTCIceCandidate(candidate));
+          }
         }
       });
 
@@ -212,6 +234,16 @@ export default function App() {
         }
       });
 
+      newSocket.on('call_ended', () => {
+        console.log('📞 Call ended by peer');
+        endCall();
+      });
+
+      newSocket.on('peer_disconnected', () => {
+        console.log('⚠️ Peer disconnected during call');
+        endCall();
+      });
+
       newSocket.on('group_invitation', async (group: Group) => {
         await createGroup(group);
         newSocket.emit('join_group', group.id);
@@ -221,6 +253,35 @@ export default function App() {
         toast.innerText = `You were added to group: ${group.name}`;
         document.body.appendChild(toast);
         setTimeout(() => toast.remove(), 5000);
+      });
+
+      newSocket.on('group_admin_promoted', async ({ groupId, phone }) => {
+        const group = await getGroup(groupId);
+        if (group) {
+          const currentAdmins = group.admins || [group.createdBy];
+          if (!currentAdmins.includes(phone)) {
+            const updatedAdmins = [...currentAdmins, phone];
+            await updateGroup({ ...group, admins: updatedAdmins });
+          }
+        }
+      });
+
+      newSocket.on('group_member_removed', async ({ groupId, phone }) => {
+        const group = await getGroup(groupId);
+        if (group) {
+          const updatedMembers = group.members.filter(m => m !== phone);
+          const updatedAdmins = (group.admins || [group.createdBy]).filter(a => a !== phone);
+          await updateGroup({ ...group, members: updatedMembers, admins: updatedAdmins });
+        }
+      });
+
+      newSocket.on('group_removed', async ({ groupId }) => {
+        await deleteGroup(groupId);
+        const toast = document.createElement('div');
+        toast.className = 'fixed top-4 left-1/2 -translate-x-1/2 bg-red-500 text-white px-6 py-3 rounded-full shadow-2xl z-[100] font-bold animate-bounce';
+        toast.innerText = `You were removed from a group`;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 3000);
       });
 
       newSocket.on('receive_message', async (data: { from: string, message: Message, senderPhone?: string }) => {
@@ -252,6 +313,7 @@ export default function App() {
 
         // Show notification if not on chat screen for this user AND it's not from me
         if (!isMe && (currentScreenRef.current !== 'chat' || selectedChatIdRef.current !== data.from)) {
+          ringtone.playNotificationTone();
           const toast = document.createElement('div');
           toast.className = 'fixed top-4 left-1/2 -translate-x-1/2 bg-primary text-white px-6 py-3 rounded-full shadow-2xl z-[100] font-bold animate-bounce';
           toast.innerText = `New message from ${chat?.name || data.from}`;
@@ -282,6 +344,10 @@ export default function App() {
           }
         }
       });
+      
+      newSocket.on('delete_message', async (data: { messageId: string, chatId: string }) => {
+        await deleteMessage(data.messageId);
+      });
 
     return () => {
       newSocket.disconnect();
@@ -303,6 +369,7 @@ export default function App() {
       setCallType(type);
       setCallStartTime(Date.now());
 
+      // 1. Get local stream
       const stream = await navigator.mediaDevices.getUserMedia({
         video: type === 'video' ? { facingMode: cameraFacingMode } : false,
         audio: true,
@@ -310,29 +377,37 @@ export default function App() {
       setLocalStream(stream);
       setCurrentScreen('call');
 
+      // 2. Create PeerConnection
       const pc = new RTCPeerConnection(STUN_SERVERS);
       peerConnection.current = pc;
       iceCandidateQueue.current = [];
       
+      // 3. Add tracks BEFORE creating offer
       stream.getTracks().forEach(track => {
         pc.addTrack(track, stream);
       });
 
+      // 4. Handle remote tracks
       pc.ontrack = (event) => {
-        console.log('🎬 Remote track received (Outgoing)');
-        setRemoteStream(event.streams[0]);
+        console.log('🎬 Remote track received (Caller)');
+        if (event.streams && event.streams[0]) {
+          setRemoteStream(event.streams[0]);
+        }
       };
 
+      // 5. Handle ICE candidates
       pc.onicecandidate = (event) => {
         if (event.candidate && socket && id) {
           socket.emit('ice_candidate', { to: id, candidate: event.candidate });
         }
       };
 
+      // 6. Create and send offer
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       
       if (socket && id) {
+        socket.emit('join_call', { toPhone: id });
         socket.emit('offer', { to: id, offer });
       }
     } catch (err) {
@@ -342,26 +417,32 @@ export default function App() {
 
   const acceptCall = async () => {
     try {
+      setIsIncomingCall(false);
+      
+      // 1. Get local stream
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: callType === 'video' ? { facingMode: cameraFacingMode } : false, 
         audio: true 
       });
       setLocalStream(stream);
-      setIsIncomingCall(false);
 
-      if (!peerConnection.current) {
+      const pc = peerConnection.current;
+      if (!pc) {
         console.error('No peer connection available to accept call');
         return;
       }
 
+      // 2. Add local tracks to the existing PC (initialized in 'offer' listener)
       stream.getTracks().forEach(track => {
-        peerConnection.current?.addTrack(track, stream);
+        pc.addTrack(track, stream);
       });
 
-      const answer = await peerConnection.current.createAnswer();
-      await peerConnection.current.setLocalDescription(answer);
+      // 3. Create and send answer
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
 
       if (socket && callerId) {
+        socket.emit('join_call', { toPhone: callerId });
         socket.emit('answer', { to: callerId, answer });
       }
     } catch (err) {
@@ -373,7 +454,9 @@ export default function App() {
     const duration = callStartTime ? Math.floor((Date.now() - callStartTime) / 1000) : 0;
     
     // Save call log
-    if (selectedChatId) {
+    if (selectedChatId && socket) {
+      socket.emit('end_call', { to: selectedChatId });
+      
       const log: CallLog = {
         id: Date.now().toString(),
         chatId: selectedChatId,
@@ -596,6 +679,7 @@ export default function App() {
             <ChatScreen 
               chatId={selectedChatId}
               socket={socket}
+              onlineUsers={onlineUsers}
               isConnected={isConnected}
               onBack={() => setCurrentScreen('main')}
               onCall={(type) => startCall(type)}

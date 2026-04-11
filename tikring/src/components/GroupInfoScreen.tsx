@@ -34,7 +34,8 @@ export default function GroupInfoScreen({ groupId, onBack, onGroupDeleted, socke
   const handleRemoveMember = async (phone: string) => {
     if (!group) return;
     const updatedMembers = group.members.filter(m => m !== phone);
-    const updatedGroup = { ...group, members: updatedMembers };
+    const updatedAdmins = (group.admins || [group.createdBy]).filter(a => a !== phone);
+    const updatedGroup = { ...group, members: updatedMembers, admins: updatedAdmins };
     await updateGroup(updatedGroup);
     setGroup(updatedGroup);
     
@@ -43,16 +44,35 @@ export default function GroupInfoScreen({ groupId, onBack, onGroupDeleted, socke
     }
   };
 
+  const handlePromoteToAdmin = async (phone: string) => {
+    if (!group) return;
+    const currentAdmins = group.admins || [group.createdBy];
+    if (currentAdmins.includes(phone)) return;
+    
+    const updatedAdmins = [...currentAdmins, phone];
+    const updatedGroup = { ...group, admins: updatedAdmins };
+    await updateGroup(updatedGroup);
+    setGroup(updatedGroup);
+
+    if (socket) {
+      socket.emit('group_admin_promoted', { groupId, phone });
+    }
+  };
+
   const handleAddMember = async (phone: string) => {
     if (!group || group.members.includes(phone)) return;
     const updatedMembers = [...group.members, phone];
-    const updatedGroup = { ...group, members: updatedMembers };
+    const updatedGroup = { 
+      ...group, 
+      members: updatedMembers,
+      admins: group.admins || [group.createdBy] 
+    };
     await updateGroup(updatedGroup);
     setGroup(updatedGroup);
     setShowAddMember(false);
 
     if (socket) {
-      socket.emit('group_invitation', phone, updatedGroup);
+      socket.emit('group_invitation', { to: phone, group: updatedGroup });
     }
   };
 
@@ -65,7 +85,7 @@ export default function GroupInfoScreen({ groupId, onBack, onGroupDeleted, socke
 
   if (!group) return null;
 
-  const isAdmin = group.createdBy === myPhone;
+  const isAdmin = (group.admins || [group.createdBy]).includes(myPhone);
 
   return (
     <div className="flex flex-col h-full bg-white max-w-md mx-auto shadow-2xl relative overflow-hidden">
@@ -127,10 +147,10 @@ export default function GroupInfoScreen({ groupId, onBack, onGroupDeleted, socke
             {group.members.map(phone => {
               const contact = allContacts.find(c => c.phone === phone);
               const isMe = phone === myPhone;
-              const isMemberAdmin = phone === group.createdBy;
+              const isMemberAdmin = (group.admins || [group.createdBy]).includes(phone);
 
               return (
-                <div key={phone} className="flex items-center justify-between p-2 rounded-xl hover:bg-surface transition-colors">
+                <div key={phone} className="flex items-center justify-between p-2 rounded-xl hover:bg-surface transition-colors group/item">
                   <div className="flex items-center gap-3">
                     <img 
                       src={isMe ? 'https://picsum.photos/seed/me/100' : (contact?.avatar || `https://picsum.photos/seed/${phone}/100`)} 
@@ -143,13 +163,26 @@ export default function GroupInfoScreen({ groupId, onBack, onGroupDeleted, socke
                       {isMemberAdmin && <span className="text-[10px] font-bold text-primary">Admin</span>}
                     </div>
                   </div>
+                  
                   {isAdmin && !isMe && (
-                    <button 
-                      onClick={() => handleRemoveMember(phone)}
-                      className="text-red-400 p-2 hover:bg-red-50 rounded-full transition-colors"
-                    >
-                      <UserMinus className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center gap-1 opacity-0 group-hover/item:opacity-100 transition-opacity">
+                      {!isMemberAdmin && (
+                        <button 
+                          onClick={() => handlePromoteToAdmin(phone)}
+                          className="text-primary p-2 hover:bg-primary/10 rounded-full transition-colors"
+                          title="Promote to Admin"
+                        >
+                          <Users className="w-4 h-4" />
+                        </button>
+                      )}
+                      <button 
+                        onClick={() => handleRemoveMember(phone)}
+                        className="text-red-400 p-2 hover:bg-red-50 rounded-full transition-colors"
+                        title="Remove from Group"
+                      >
+                        <UserMinus className="w-4 h-4" />
+                      </button>
+                    </div>
                   )}
                 </div>
               );

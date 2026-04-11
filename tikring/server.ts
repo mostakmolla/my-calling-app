@@ -15,85 +15,93 @@ async function startServer() {
 
   const PORT = 3000;
 
-  // Signaling and Presence
-  const users = new Map(); // socket.id -> { username, id, phone }
+  // Presence tracking
+  const users = new Map(); // socket.id -> { username, phone }
   const phoneToSocket = new Map(); // phone -> socket.id
 
   io.on("connection", (socket) => {
     console.log("User connected:", socket.id);
 
     socket.on("register", ({ username, phone }) => {
-      users.set(socket.id, { username, id: socket.id, phone });
+      users.set(socket.id, { username, phone });
       if (phone) {
         phoneToSocket.set(phone, socket.id);
-        socket.join(phone); // Join a room named after the phone number
-        // Broadcast that this user is now online
+        socket.join(phone); // Individual room for signaling
         io.emit("user_status_change", { phone, isOnline: true });
       }
-      // Send the full user list to everyone (including the new user)
       io.emit("user_list", Array.from(users.values()));
-      console.log(`User registered: ${username} (${phone})`);
     });
 
     socket.on("disconnect", () => {
       const user = users.get(socket.id);
       if (user && user.phone) {
         phoneToSocket.delete(user.phone);
-        // Broadcast that this user is now offline
         io.emit("user_status_change", { phone: user.phone, isOnline: false });
+        
+        // Notify any active call rooms
+        const rooms = Array.from(socket.rooms);
+        rooms.forEach(room => {
+          if (room.startsWith('call_')) {
+            socket.to(room).emit('peer_disconnected');
+          }
+        });
       }
       users.delete(socket.id);
       io.emit("user_list", Array.from(users.values()));
       console.log("User disconnected:", socket.id);
     });
 
-    // Friend Request Signaling
-    socket.on("friend_request", ({ toPhone, fromUser }) => {
-      const targetSocketId = phoneToSocket.get(toPhone);
-      if (targetSocketId) {
-        socket.to(targetSocketId).emit("friend_request_received", fromUser);
-      }
+    // WebRTC Signaling Relay
+    socket.on("join_call", ({ toPhone }) => {
+      const user = users.get(socket.id);
+      if (!user || !user.phone) return;
+
+      const roomName = [user.phone, toPhone].sort().join('_');
+      socket.join(`call_${roomName}`);
+      console.log(`User ${user.phone} joined call room: call_${roomName}`);
+      
+      // Notify the other user that someone joined the call
+      socket.to(toPhone).emit("user_joined_call", { from: user.phone });
     });
 
-    // WebRTC Signaling
     socket.on("offer", ({ to, offer }) => {
-      const sender = users.get(socket.id);
-      socket.to(to).emit("offer", { from: sender?.phone || socket.id, offer });
+      const user = users.get(socket.id);
+      console.log(`Relaying offer from ${user?.phone} to ${to}`);
+      socket.to(to).emit("offer", { from: user?.phone, offer });
     });
 
     socket.on("answer", ({ to, answer }) => {
-      const sender = users.get(socket.id);
-      socket.to(to).emit("answer", { from: sender?.phone || socket.id, answer });
+      const user = users.get(socket.id);
+      console.log(`Relaying answer from ${user?.phone} to ${to}`);
+      socket.to(to).emit("answer", { from: user?.phone, answer });
     });
 
     socket.on("ice_candidate", ({ to, candidate }) => {
-      const sender = users.get(socket.id);
-      socket.to(to).emit("ice_candidate", { from: sender?.phone || socket.id, candidate });
+      const user = users.get(socket.id);
+      socket.to(to).emit("ice_candidate", { from: user?.phone, candidate });
     });
 
-    // Group signaling
-    socket.on("group_created", ({ to, group }) => {
-      const targetSocketId = phoneToSocket.get(to);
-      if (targetSocketId) {
-        socket.to(targetSocketId).emit("group_invitation", group);
+    socket.on("end_call", ({ to }) => {
+      const user = users.get(socket.id);
+      if (user && user.phone) {
+        const roomName = [user.phone, to].sort().join('_');
+        socket.leave(`call_${roomName}`);
+        socket.to(to).emit("call_ended");
       }
     });
 
-    socket.on("join_group", (groupId) => {
-      socket.join(groupId);
-      console.log(`User ${socket.id} joined group ${groupId}`);
-    });
-
-    // Chat signaling (for real-time delivery, though storage is local)
+    // Other app features (Chat, Groups, etc.)
     socket.on("send_message", ({ to, message, isGroup }) => {
       const sender = users.get(socket.id);
       if (isGroup) {
-        // Broadcast to the group room
         socket.to(to).emit("receive_message", { from: to, message, senderPhone: sender?.phone });
       } else {
-        // Individual message
         socket.to(to).emit("receive_message", { from: sender?.phone || socket.id, message });
       }
+    });
+
+    socket.on("delete_message", ({ to, messageId, chatId }) => {
+      socket.to(to).emit("delete_message", { messageId, chatId });
     });
 
     socket.on("typing", ({ to }) => {
@@ -108,26 +116,28 @@ async function startServer() {
 
     socket.on("message_read", ({ to, messageId, chatId }) => {
       const sender = users.get(socket.id);
-      const payload = { 
-        from: sender?.phone || socket.id, 
-        messageId, 
-        chatId: sender?.phone || chatId 
-      };
-      
-      // Notify the original sender
+      const payload = { from: sender?.phone || socket.id, messageId, chatId: sender?.phone || chatId };
       socket.to(to).emit("message_read", payload);
-      
-      // Notify other devices of the current user
       if (sender?.phone) {
-        socket.to(sender.phone).emit("message_read", {
-          ...payload,
-          isSelfUpdate: true // Flag to indicate this is a sync for the user's own devices
-        });
+        socket.to(sender.phone).emit("message_read", { ...payload, isSelfUpdate: true });
       }
+    });
+
+    socket.on("friend_request", ({ toPhone, fromUser }) => {
+      const targetSocketId = phoneToSocket.get(toPhone);
+      if (targetSocketId) socket.to(targetSocketId).emit("friend_request_received", fromUser);
+    });
+
+    socket.on("group_invitation", ({ to, group }) => {
+      const targetSocketId = phoneToSocket.get(to);
+      if (targetSocketId) socket.to(targetSocketId).emit("group_invitation", group);
+    });
+
+    socket.on("join_group", (groupId) => {
+      socket.join(groupId);
     });
   });
 
-  // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },

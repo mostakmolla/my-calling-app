@@ -280,7 +280,7 @@ export default function HomeScreen({
                   referrerPolicy="no-referrer"
                 />
               </div>
-              <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-online rounded-full border-2 border-white" />
+              <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-online rounded-full border-2 border-white animate-pulse" />
             </div>
             <span className="text-[11px] text-text-secondary font-bold truncate w-14 text-center">{user.username}</span>
           </div>
@@ -356,7 +356,7 @@ export default function HomeScreen({
                 referrerPolicy="no-referrer"
               />
               {(chat.isOnline || onlineUsers.some(u => u.phone === chat.phone)) && (
-                <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-online rounded-full border-2 border-white" />
+                <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-online rounded-full border-2 border-white animate-pulse" />
               )}
             </div>
             <div className="ml-4 flex-1 min-w-0">

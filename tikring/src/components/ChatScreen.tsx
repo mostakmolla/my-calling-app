@@ -2,9 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Phone, Video, MoreVertical, Smile, Paperclip, Camera, Send, Mic, X, Play, Pause, ExternalLink, MapPin, Volume2, Loader2, Users } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/src/lib/utils';
-import { Message, saveMessage, getMessages, getChat, Chat, getGroup, Group, markAllMessagesAsRead, updateMessageStatus } from '@/src/lib/db';
+import { Message, saveMessage, getMessages, getChat, Chat, getGroup, Group, markAllMessagesAsRead, updateMessageStatus, deleteMessage } from '@/src/lib/db';
 import { Socket } from 'socket.io-client';
-import { Check, CheckCheck } from 'lucide-react';
+import { Check, CheckCheck, Trash2 } from 'lucide-react';
 import { GoogleGenAI, Modality } from "@google/genai";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -16,9 +16,10 @@ interface ChatScreenProps {
   onBack: () => void;
   onCall: (type: 'video' | 'audio') => void;
   onViewProfile: () => void;
+  onlineUsers?: any[];
 }
 
-export default function ChatScreen({ chatId, socket, isConnected, onBack, onCall, onViewProfile }: ChatScreenProps) {
+export default function ChatScreen({ chatId, socket, isConnected, onBack, onCall, onViewProfile, onlineUsers = [] }: ChatScreenProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [chat, setChat] = useState<Chat | null>(null);
   const [group, setGroup] = useState<Group | null>(null);
@@ -29,6 +30,7 @@ export default function ChatScreen({ chatId, socket, isConnected, onBack, onCall
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [playingMessageId, setPlayingMessageId] = useState<string | null>(null);
   const [isGeneratingVoice, setIsGeneratingVoice] = useState<string | null>(null);
+  const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
   const [audioCurrentTime, setAudioCurrentTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -146,6 +148,13 @@ export default function ChatScreen({ chatId, socket, isConnected, onBack, onCall
       }
     });
 
+    socket.on('message_deleted', async (data: { messageId: string, from: string }) => {
+      if (data.from === chatId) {
+        await deleteMessage(data.messageId);
+        setMessages(prev => prev.filter(msg => msg.id !== data.messageId));
+      }
+    });
+
     return () => {
       socket.off('receive_message', handleReceiveMessage);
       socket.off('message_read', handleMessageRead);
@@ -199,6 +208,26 @@ export default function ChatScreen({ chatId, socket, isConnected, onBack, onCall
     setMessages(prev => [...prev, newMessage]);
     setInputText('');
     setShowEmojiPicker(false);
+  };
+
+  const handleDeleteMessage = async (messageId: string, deleteForEveryone: boolean = false) => {
+    try {
+      await deleteMessage(messageId);
+      setMessages(prev => prev.filter(msg => msg.id !== messageId));
+      setSelectedMessageId(null);
+
+      if (deleteForEveryone && socket && chat?.phone) {
+        socket.emit('delete_message', { to: chat.phone, messageId, chatId });
+      }
+
+      const toast = document.createElement('div');
+      toast.className = 'fixed bottom-24 left-1/2 -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded-full shadow-2xl z-[100] font-bold';
+      toast.innerText = deleteForEveryone ? "Message deleted for everyone" : "Message deleted for you";
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    } catch (err) {
+      console.error('Error deleting message:', err);
+    }
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -504,8 +533,8 @@ export default function ChatScreen({ chatId, socket, isConnected, onBack, onCall
               className="w-10 h-10 rounded-full object-cover"
               referrerPolicy="no-referrer"
             />
-            {chat?.isOnline && (
-              <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-online rounded-full border-2 border-white" />
+            {(chat?.isOnline || (chat?.phone && onlineUsers.some(u => u.phone === chat.phone))) && (
+              <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-online rounded-full border-2 border-white animate-pulse" />
             )}
           </div>
           <div className="min-w-0">
@@ -544,18 +573,75 @@ export default function ChatScreen({ chatId, socket, isConnected, onBack, onCall
           <div 
             key={msg.id}
             className={cn(
-              "flex flex-col",
+              "flex flex-col relative",
               msg.senderId === 'me' ? "ml-auto items-end max-w-[70%]" : "mr-auto items-start max-w-[80%]"
             )}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setSelectedMessageId(selectedMessageId === msg.id ? null : msg.id);
+            }}
+            onClick={() => setSelectedMessageId(null)}
           >
-            <div className={cn(
-              "rounded-2xl text-sm shadow-sm overflow-hidden relative group",
-              msg.senderId === 'me' 
-                ? "bg-primary text-white rounded-tr-none" 
-                : "bg-white text-text-primary rounded-tl-none",
-              msg.type === 'voice' && "italic font-medium",
-              msg.type === 'image' && "bg-opacity-90 p-1"
-            )}>
+            <AnimatePresence>
+              {selectedMessageId === msg.id && (
+                <motion.div 
+                  initial={{ opacity: 0, scale: 0.9, y: 5 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.9, y: 5 }}
+                  className={cn(
+                    "absolute z-50 bg-white shadow-2xl rounded-xl border border-gray-100 p-1 flex flex-col min-w-[150px]",
+                    msg.senderId === 'me' ? "right-full mr-2 top-0" : "left-full ml-2 top-0"
+                  )}
+                >
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteMessage(msg.id, false);
+                    }}
+                    className="flex items-center gap-2 px-3 py-2.5 hover:bg-gray-50 rounded-lg text-xs font-bold text-text-primary transition-colors text-left"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-gray-400" />
+                    Delete for Me
+                  </button>
+                  {msg.senderId === 'me' && (
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteMessage(msg.id, true);
+                      }}
+                      className="flex items-center gap-2 px-3 py-2.5 hover:bg-red-50 rounded-lg text-xs font-bold text-red-500 transition-colors border-t border-gray-50 text-left"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      Delete for Everyone
+                    </button>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <div 
+              className={cn(
+                "rounded-2xl text-sm shadow-sm overflow-hidden relative group",
+                msg.senderId === 'me' 
+                  ? "bg-primary text-white rounded-tr-none" 
+                  : "bg-white text-text-primary rounded-tl-none",
+                msg.type === 'voice' && "italic font-medium",
+                msg.type === 'image' && "bg-opacity-90 p-1"
+              )}
+            >
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedMessageId(selectedMessageId === msg.id ? null : msg.id);
+                }}
+                className={cn(
+                  "absolute top-1 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-full hover:bg-black/10 z-10",
+                  msg.senderId === 'me' ? "left-1" : "right-1"
+                )}
+              >
+                <MoreVertical className={cn("w-3.5 h-3.5", msg.senderId === 'me' ? "text-white" : "text-gray-400")} />
+              </button>
+
               {chat?.type === 'group' && msg.senderId !== 'me' && (
                 <div className="px-3 pt-2 text-[10px] font-black text-primary uppercase tracking-tighter">
                   {msg.senderId}

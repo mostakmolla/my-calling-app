@@ -31,6 +31,7 @@ export interface Group {
   avatar: string;
   description?: string;
   members: string[]; // Array of phone numbers or IDs
+  admins: string[]; // Array of phone numbers or IDs
   createdBy: string;
   createdAt: number;
 }
@@ -208,6 +209,11 @@ export const saveMessage = async (message: Message) => {
   }
 };
 
+export const deleteMessage = async (messageId: string) => {
+  const db = await getDB();
+  await db.delete('messages', messageId);
+};
+
 export const getMessages = async (chatId: string) => {
   const db = await getDB();
   return db.getAllFromIndex('messages', 'chatId', chatId);
@@ -215,7 +221,8 @@ export const getMessages = async (chatId: string) => {
 
 export const getChats = async () => {
   const db = await getDB();
-  return db.getAll('chats');
+  const chats = await db.getAll('chats');
+  return chats.sort((a, b) => (b.lastTimestamp || 0) - (a.lastTimestamp || 0));
 };
 
 export const getChat = async (id: string) => {

@@ -34,6 +34,7 @@ export default function VideoCall({
   const [showBackgroundMenu, setShowBackgroundMenu] = useState(false);
   const [showToolsMenu, setShowToolsMenu] = useState(false);
   const [showScreenshotFlash, setShowScreenshotFlash] = useState(false);
+  const [isSelfTest, setIsSelfTest] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [duration, setDuration] = useState(0);
 
@@ -44,10 +45,18 @@ export default function VideoCall({
   }, [localStream]);
 
   useEffect(() => {
-    if (remoteVideoRef.current && remoteStream) {
-      remoteVideoRef.current.srcObject = remoteStream;
+    if (remoteVideoRef.current) {
+      if (isSelfTest && localStream) {
+        remoteVideoRef.current.srcObject = localStream;
+        remoteVideoRef.current.muted = false; // Unmute so they can hear themselves
+      } else if (remoteStream) {
+        remoteVideoRef.current.srcObject = remoteStream;
+        remoteVideoRef.current.muted = false;
+      } else {
+        remoteVideoRef.current.srcObject = null;
+      }
     }
-  }, [remoteStream]);
+  }, [remoteStream, isSelfTest, localStream]);
 
   useEffect(() => {
     if (!isIncoming) {
@@ -192,13 +201,21 @@ export default function VideoCall({
               Stop Sharing
             </button>
           </div>
-        ) : remoteStream ? (
-          <video 
-            ref={remoteVideoRef} 
-            autoPlay 
-            playsInline 
-            className="w-full h-full object-cover"
-          />
+        ) : (remoteStream || isSelfTest) ? (
+          <div className="relative w-full h-full">
+            <video 
+              ref={remoteVideoRef} 
+              autoPlay 
+              playsInline 
+              className="w-full h-full object-cover"
+            />
+            {!isSelfTest && (
+              <div className="absolute top-6 left-6 z-30 flex items-center gap-2 bg-black/20 backdrop-blur-md px-3 py-1 rounded-full border border-white/10">
+                <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                <span className="text-[10px] font-black text-white uppercase tracking-widest">Live</span>
+              </div>
+            )}
+          </div>
         ) : (
           <div className="flex flex-col items-center gap-4">
             <div className="w-32 h-32 rounded-full bg-gray-800 flex items-center justify-center">
@@ -210,12 +227,12 @@ export default function VideoCall({
       </div>
 
       {/* Top Bar */}
-      <div className="absolute top-10 left-0 right-0 px-6 flex flex-col items-center gap-3 z-20">
+      <div className="absolute top-6 sm:top-10 left-0 right-0 px-4 sm:px-6 flex flex-col items-center gap-2 sm:gap-3 z-20">
         <div className="flex flex-col items-center">
-          <h2 className="text-white text-xl font-bold drop-shadow-md">{callerName}</h2>
-          <div className="flex items-center gap-2 mt-1">
-            <div className="w-2 h-2 rounded-full bg-online animate-pulse" />
-            <span className="text-white/70 text-xs font-medium uppercase tracking-widest">In Call</span>
+          <h2 className="text-white text-lg sm:text-xl font-bold drop-shadow-md truncate max-w-[200px] sm:max-w-none">{callerName}</h2>
+          <div className="flex items-center gap-2 mt-0.5 sm:mt-1">
+            <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-online animate-pulse" />
+            <span className="text-white/70 text-[10px] sm:text-xs font-medium uppercase tracking-widest">In Call</span>
           </div>
         </div>
         
@@ -223,10 +240,10 @@ export default function VideoCall({
           <motion.div 
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-black/30 backdrop-blur-xl px-5 py-2 rounded-2xl border border-white/10 flex items-center gap-3 shadow-2xl"
+            className="bg-black/30 backdrop-blur-xl px-4 sm:px-5 py-1.5 sm:py-2 rounded-xl sm:rounded-2xl border border-white/10 flex items-center gap-2 sm:gap-3 shadow-2xl"
           >
-            <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
-            <span className="text-white text-2xl font-mono font-black tracking-tighter drop-shadow-lg">
+            <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full bg-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
+            <span className="text-white text-xl sm:text-2xl font-mono font-black tracking-tighter drop-shadow-lg">
               {formatDuration(duration)}
             </span>
           </motion.div>
@@ -238,7 +255,7 @@ export default function VideoCall({
         drag
         dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
         className={cn(
-          "absolute bottom-32 right-6 w-32 h-44 bg-gray-900 rounded-xl overflow-hidden shadow-2xl border-2 z-30 transition-all duration-300",
+          "absolute bottom-24 right-4 sm:bottom-32 sm:right-6 w-24 h-32 sm:w-32 sm:h-44 bg-gray-900 rounded-xl overflow-hidden shadow-2xl border-2 z-30 transition-all duration-300",
           isScreenSharing ? "border-primary ring-4 ring-primary/20 scale-105" : 
           (isMuted || isVideoOff) ? "border-red-500 ring-4 ring-red-500/20" : "border-white/20"
         )}
@@ -288,38 +305,38 @@ export default function VideoCall({
       </motion.div>
 
       {/* Controls Bar */}
-      <div className="absolute bottom-10 left-0 right-0 flex justify-center items-center gap-6 z-40 px-6">
-        <div className="bg-black/40 backdrop-blur-md px-4 py-3 rounded-3xl flex items-center gap-4">
+      <div className="absolute bottom-6 sm:bottom-10 left-0 right-0 flex justify-center items-center z-40 px-4 sm:px-6">
+        <div className="bg-black/40 backdrop-blur-md px-3 sm:px-4 py-2 sm:py-3 rounded-2xl sm:rounded-3xl flex items-center gap-2 sm:gap-4">
           <button 
             onClick={toggleMute}
             className={cn(
-              "p-3 rounded-full transition-colors",
+              "p-2.5 sm:p-3 rounded-full transition-colors",
               isMuted ? "bg-white text-black" : "bg-white/20 text-white"
             )}
           >
-            {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+            {isMuted ? <MicOff className="w-4 h-4 sm:w-5 sm:h-5" /> : <Mic className="w-4 h-4 sm:w-5 sm:h-5" />}
           </button>
 
           <button 
             onClick={toggleVideo}
             className={cn(
-              "p-3 rounded-full transition-colors",
+              "p-2.5 sm:p-3 rounded-full transition-colors",
               isVideoOff ? "bg-white text-black" : "bg-white/20 text-white"
             )}
           >
-            {isVideoOff ? <VideoOff className="w-5 h-5" /> : <Video className="w-5 h-5" />}
+            {isVideoOff ? <VideoOff className="w-4 h-4 sm:w-5 sm:h-5" /> : <Video className="w-4 h-4 sm:w-5 sm:h-5" />}
           </button>
 
           <div className="relative">
             <button 
               onClick={() => setShowBackgroundMenu(!showBackgroundMenu)}
               className={cn(
-                "p-3 rounded-full transition-colors",
+                "p-2.5 sm:p-3 rounded-full transition-colors",
                 virtualBackground !== 'none' ? "bg-white text-black" : "bg-white/20 text-white"
               )}
               title="Virtual Backgrounds"
             >
-              <Sparkles className="w-5 h-5" />
+              <Sparkles className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
             
             <AnimatePresence>
@@ -361,12 +378,12 @@ export default function VideoCall({
                 setShowBackgroundMenu(false);
               }}
               className={cn(
-                "p-3 rounded-full transition-colors",
+                "p-2.5 sm:p-3 rounded-full transition-colors",
                 (isScreenSharing || showToolsMenu) ? "bg-white text-black" : "bg-white/20 text-white"
               )}
               title="Tools"
             >
-              <LayoutGrid className="w-5 h-5" />
+              <LayoutGrid className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
             
             <AnimatePresence>
@@ -412,6 +429,26 @@ export default function VideoCall({
                     <Repeat className="w-4 h-4" />
                     Switch Camera
                   </button>
+
+                  <button 
+                    onClick={() => {
+                      setIsSelfTest(!isSelfTest);
+                      setShowToolsMenu(false);
+                      if (!isSelfTest) {
+                        setError("Self Test Mode: You can now see and hear yourself.");
+                      } else {
+                        setError("Self Test Mode Disabled.");
+                      }
+                      setTimeout(() => setError(null), 3000);
+                    }}
+                    className={cn(
+                      "flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-colors",
+                      isSelfTest ? "bg-primary text-white" : "text-white/70 hover:bg-white/10"
+                    )}
+                  >
+                    <Volume2 className="w-4 h-4" />
+                    {isSelfTest ? 'Stop Self Test' : 'Self Test Call'}
+                  </button>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -419,9 +456,9 @@ export default function VideoCall({
 
           <button 
             onClick={onEndCall}
-            className="p-3 rounded-full bg-red-500 text-white hover:bg-red-600 transition-colors"
+            className="p-2.5 sm:p-3 rounded-full bg-red-500 text-white hover:bg-red-600 transition-colors"
           >
-            <PhoneOff className="w-5 h-5" />
+            <PhoneOff className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
         </div>
       </div>
@@ -445,34 +482,34 @@ export default function VideoCall({
             initial={{ y: 100, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 100, opacity: 0 }}
-            className="absolute bottom-0 left-0 right-0 bg-white rounded-t-[40px] p-10 flex flex-col items-center gap-8 z-50 shadow-2xl"
+            className="absolute bottom-0 left-0 right-0 bg-white rounded-t-[30px] sm:rounded-t-[40px] p-6 sm:p-10 flex flex-col items-center gap-6 sm:gap-8 z-50 shadow-2xl"
           >
             <div className="flex flex-col items-center gap-2">
-              <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
-                <Video className="w-10 h-10 text-primary" />
+              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-primary/10 flex items-center justify-center">
+                <Video className="w-8 h-8 sm:w-10 sm:h-10 text-primary" />
               </div>
-              <h3 className="text-xl font-bold text-text-primary">Incoming Call from {callerName}</h3>
+              <h3 className="text-lg sm:text-xl font-bold text-text-primary text-center">Incoming Call from {callerName}</h3>
             </div>
             
-            <div className="flex gap-12">
+            <div className="flex gap-8 sm:gap-12">
               <button 
                 onClick={onEndCall}
                 className="flex flex-col items-center gap-2"
               >
-                <div className="w-16 h-16 rounded-full bg-red-500 flex items-center justify-center text-white shadow-lg">
-                  <PhoneOff className="w-8 h-8" />
+                <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-red-500 flex items-center justify-center text-white shadow-lg active:scale-90 transition-transform">
+                  <PhoneOff className="w-6 h-6 sm:w-8 sm:h-8" />
                 </div>
-                <span className="text-sm font-bold text-red-500">Decline</span>
+                <span className="text-xs sm:text-sm font-bold text-red-500">Decline</span>
               </button>
 
               <button 
                 onClick={onAccept}
                 className="flex flex-col items-center gap-2"
               >
-                <div className="w-16 h-16 rounded-full bg-online flex items-center justify-center text-white shadow-lg">
-                  <Video className="w-8 h-8" />
+                <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-online flex items-center justify-center text-white shadow-lg active:scale-90 transition-transform">
+                  <Video className="w-6 h-6 sm:w-8 sm:h-8" />
                 </div>
-                <span className="text-sm font-bold text-online">Accept</span>
+                <span className="text-xs sm:text-sm font-bold text-online">Accept</span>
               </button>
             </div>
           </motion.div>

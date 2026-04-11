@@ -45,6 +45,7 @@ export default function CreateGroupScreen({ onBack, onGroupCreated, socket }: Cr
       avatar: `https://picsum.photos/seed/${groupId}/200`,
       description: groupDescription,
       members: [...selectedContacts, profile?.phone || 'me'],
+      admins: [profile?.phone || 'me'],
       createdBy: profile?.phone || 'me',
       createdAt: Date.now(),
     };
@@ -54,7 +55,7 @@ export default function CreateGroupScreen({ onBack, onGroupCreated, socket }: Cr
     // Notify members via socket if possible
     if (socket) {
       selectedContacts.forEach(phone => {
-        socket.emit('group_created', { to: phone, group: newGroup });
+        socket.emit('group_invitation', { to: phone, group: newGroup });
       });
     }
 

@@ -271,6 +271,7 @@ export default function ContactsScreen({ onContactSelect, onViewProfile, onBack,
         name: groupName,
         avatar: `https://picsum.photos/seed/group_${Date.now()}/100`,
         members: [...selectedContacts, profile?.phone || 'me'],
+        admins: [profile?.phone || 'me'],
         createdBy: profile?.phone || 'me',
         createdAt: Date.now(),
       };
@@ -418,7 +419,7 @@ export default function ContactsScreen({ onContactSelect, onViewProfile, onBack,
                       referrerPolicy="no-referrer"
                     />
                   </div>
-                  <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-online rounded-full border-2 border-white shadow-sm" />
+                  <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-online rounded-full border-2 border-white shadow-sm animate-pulse" />
                 </div>
                 <span className="text-[10px] font-bold text-text-primary truncate w-14 text-center">{user.username}</span>
               </div>
@@ -500,7 +501,7 @@ export default function ContactsScreen({ onContactSelect, onViewProfile, onBack,
                 />
                 {(contact.isOnline || onlineUsers.some(u => u.phone === contact.phone)) && (
                   <div className={cn(
-                    "absolute bottom-0 right-0 bg-online rounded-full border-2 border-white",
+                    "absolute bottom-0 right-0 bg-online rounded-full border-2 border-white animate-pulse",
                     viewMode === 'grid' ? "w-4 h-4" : "w-3 h-3"
                   )} />
                 )}
@@ -531,7 +532,10 @@ export default function ContactsScreen({ onContactSelect, onViewProfile, onBack,
                 </div>
                 {viewMode === 'list' && (
                   <div className="flex items-center justify-between">
-                    <p className="text-[10px] text-online font-medium">
+                    <p className={cn(
+                      "text-[10px] font-medium transition-colors",
+                      (contact.isOnline || onlineUsers.some(u => u.phone === contact.phone)) ? "text-online" : "text-text-secondary"
+                    )}>
                       {(contact.isOnline || onlineUsers.some(u => u.phone === contact.phone)) ? 'Online' : 'Offline'}
                     </p>
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
