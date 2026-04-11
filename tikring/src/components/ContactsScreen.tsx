@@ -407,7 +407,7 @@ export default function ContactsScreen({ onContactSelect, onViewProfile, onBack,
           <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2">
             {onlineUsers.map((user) => (
               <div 
-                key={`global-contact-${user.id}`} 
+                key={`global-contact-${user.phone || user.id || Math.random()}`} 
                 className="flex flex-col items-center gap-1.5 flex-shrink-0 cursor-pointer group"
                 onClick={() => handleAddGlobalUser(user)}
               >

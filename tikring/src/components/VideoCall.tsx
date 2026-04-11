@@ -12,6 +12,8 @@ interface VideoCallProps {
   onAccept?: () => void;
   onSwitchCamera?: () => void;
   onToggleScreenShare?: (isSharing: boolean) => Promise<{ success: boolean; error?: string }>;
+  localVideoRef?: React.RefObject<HTMLVideoElement | null>;
+  remoteVideoRef?: React.RefObject<HTMLVideoElement | null>;
 }
 
 export default function VideoCall({ 
@@ -22,10 +24,15 @@ export default function VideoCall({
   isIncoming,
   onAccept,
   onSwitchCamera,
-  onToggleScreenShare
+  onToggleScreenShare,
+  localVideoRef: externalLocalVideoRef,
+  remoteVideoRef: externalRemoteVideoRef
 }: VideoCallProps) {
-  const localVideoRef = useRef<HTMLVideoElement>(null);
-  const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const internalLocalVideoRef = useRef<HTMLVideoElement>(null);
+  const internalRemoteVideoRef = useRef<HTMLVideoElement>(null);
+  
+  const localVideoRef = externalLocalVideoRef || internalLocalVideoRef;
+  const remoteVideoRef = externalRemoteVideoRef || internalRemoteVideoRef;
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);

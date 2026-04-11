@@ -25,7 +25,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'chats' | 'calls' | 'explore' | 'contacts'>('chats');
   const [currentScreen, setCurrentScreen] = useState<'main' | 'chat' | 'call' | 'profile' | 'friend_profile' | 'create_group' | 'group_info'>('main');
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
-  const [selectedChatName, setSelectedChatName] = useState<string>('Adam');
+  const [selectedChatName, setSelectedChatName] = useState<string>('');
   const [selectedChatAvatar, setSelectedChatAvatar] = useState<string>('');
   const [selectedFriend, setSelectedFriend] = useState<Chat | null>(null);
   const [callStartTime, setCallStartTime] = useState<number>(0);
@@ -39,16 +39,26 @@ export default function App() {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [isIncomingCall, setIsIncomingCall] = useState(false);
-  const [callerId, setCallerId] = useState<string | null>(null); // This will store the caller's phone number
+  const [callerId, setCallerId] = useState<string | null>(null);
   const [cameraFacingMode, setCameraFacingMode] = useState<'user' | 'environment'>('user');
-  const peerConnection = useRef<RTCPeerConnection | null>(null);
+  
+  // Refs for WebRTC
+  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const iceCandidateQueue = useRef<RTCIceCandidateInit[]>([]);
+  const localVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  
+  // Helper refs for socket listeners
   const currentScreenRef = useRef(currentScreen);
   const selectedChatIdRef = useRef(selectedChatId);
 
   useEffect(() => {
     currentScreenRef.current = currentScreen;
   }, [currentScreen]);
+
+  useEffect(() => {
+    selectedChatIdRef.current = selectedChatId;
+  }, [selectedChatId]);
 
   useEffect(() => {
     if (isIncomingCall) {
@@ -59,29 +69,25 @@ export default function App() {
   }, [isIncomingCall]);
 
   useEffect(() => {
-    selectedChatIdRef.current = selectedChatId;
-  }, [selectedChatId]);
-
-  useEffect(() => {
     const setup = async () => {
       await initDB();
       let profile = await getProfile();
       
-      // Ensure user has a unique phone number for signaling
       if (!profile || !profile.phone) {
         const randomPhone = Math.floor(1000000000 + Math.random() * 9000000000).toString();
         const defaultProfile = {
           name: profile?.name || 'User_' + Math.floor(Math.random() * 1000),
           phone: randomPhone,
           avatar: `https://picsum.photos/seed/${randomPhone}/200`,
-          status: 'Hey! I am using ConnectMe',
+          status: 'Hey! I am using TikRing',
           isPhoneVerified: true
         };
         await saveProfile(defaultProfile);
         profile = defaultProfile;
       }
 
-      const newSocket = io( 'https://my-calling-app-production.up.railway.app',{
+      // CRITICAL: Never change this URL
+      const newSocket = io('https://my-calling-app-production.up.railway.app', {
         transports: ['websocket', 'polling'],
         reconnectionAttempts: 20,
         reconnectionDelay: 1000,
@@ -93,7 +99,7 @@ export default function App() {
       newSocket.on('connect', () => {
         setIsConnected(true);
         setIsConnecting(false);
-        console.log('✅ Connected to Server (ID:', newSocket.id, ')');
+        console.log('✅ Connected to Server');
         newSocket.emit('register', {
           username: profile?.name,
           phone: profile?.phone
@@ -106,65 +112,26 @@ export default function App() {
         setIsConnecting(false);
       });
 
-      newSocket.on('reconnecting', (attemptNumber) => {
-        console.log('🔄 Reconnecting... Attempt:', attemptNumber);
-        setIsConnecting(true);
-      });
-
-      newSocket.on('disconnect', (reason) => {
-        console.log('⚠️ Disconnected:', reason);
+      newSocket.on('disconnect', () => {
         setIsConnected(false);
         setIsConnecting(false);
       });
 
       newSocket.on('user_list', (users: any[]) => {
-        console.log('👥 Received user list:', users.length, 'users online');
-        // Filter out self
         setOnlineUsers(users.filter(u => u.phone !== profile?.phone));
       });
 
       newSocket.on('user_status_change', ({ phone, isOnline }) => {
-        console.log(`👤 User ${phone} is now ${isOnline ? 'online' : 'offline'}`);
         setOnlineUsers(prev => {
           if (isOnline) {
-            // Add to online users if not already there
             if (!prev.find(u => u.phone === phone)) {
               return [...prev, { phone, isOnline: true }];
             }
             return prev;
           } else {
-            // Remove from online users
             return prev.filter(u => u.phone !== phone);
           }
         });
-      });
-
-      newSocket.on('friend_request_received', async (fromUser) => {
-        // Save the incoming request to the database
-        const newContact: Chat = {
-          id: `req-${Date.now()}`,
-          name: fromUser.name,
-          phone: fromUser.phone,
-          avatar: fromUser.avatar,
-          unreadCount: 1,
-          isOnline: true,
-          status: 'request_received',
-          lastMessage: 'Sent you a friend request',
-          lastTimestamp: Date.now(),
-        };
-        await addContact(newContact);
-        
-        // Show a notification (simple toast)
-        const toast = document.createElement('div');
-        toast.className = 'fixed top-4 left-1/2 -translate-x-1/2 bg-primary text-white px-6 py-3 rounded-full shadow-2xl z-[100] font-bold animate-bounce';
-        toast.innerText = `New Friend Request from ${fromUser.name}!`;
-        document.body.appendChild(toast);
-        setTimeout(() => toast.remove(), 5000);
-      });
-
-      newSocket.on('user_joined_call', ({ from }) => {
-        console.log('👤 Peer joined call:', from);
-        // This is useful if we want to auto-start something when the second person joins
       });
 
       newSocket.on('offer', async ({ from, offer }) => {
@@ -184,28 +151,28 @@ export default function App() {
         
         setCurrentScreen('call');
         
-        // Initialize peer connection for the incoming call
+        // Initialize PeerConnection but don't add tracks yet (wait for accept)
         const pc = new RTCPeerConnection(STUN_SERVERS);
-        peerConnection.current = pc;
+        peerConnectionRef.current = pc;
         iceCandidateQueue.current = [];
 
         pc.ontrack = (event) => {
-          console.log('🎬 Remote track received (Callee)');
-          if (event.streams && event.streams[0]) {
-            setRemoteStream(event.streams[0]);
+          console.log('🎬 Remote track received');
+          if (remoteVideoRef.current && event.streams[0]) {
+            remoteVideoRef.current.srcObject = event.streams[0];
           }
+          setRemoteStream(event.streams[0]);
         };
 
         pc.onicecandidate = (event) => {
-          if (event.candidate && newSocket) {
+          if (event.candidate) {
             newSocket.emit('ice_candidate', { to: from, candidate: event.candidate });
           }
         };
 
-        // Set remote description BEFORE creating answer
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
         
-        // Process any queued candidates
+        // Process queued candidates
         while (iceCandidateQueue.current.length > 0) {
           const candidate = iceCandidateQueue.current.shift();
           if (candidate) await pc.addIceCandidate(new RTCIceCandidate(candidate));
@@ -214,81 +181,36 @@ export default function App() {
 
       newSocket.on('answer', async ({ answer }) => {
         console.log('✅ Received answer');
-        if (peerConnection.current) {
-          await peerConnection.current.setRemoteDescription(new RTCSessionDescription(answer));
+        if (peerConnectionRef.current) {
+          await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(answer));
           
-          // Process any queued candidates for the caller
           while (iceCandidateQueue.current.length > 0) {
             const candidate = iceCandidateQueue.current.shift();
-            if (candidate) await peerConnection.current.addIceCandidate(new RTCIceCandidate(candidate));
+            if (candidate) await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate));
           }
         }
       });
 
       newSocket.on('ice_candidate', async ({ candidate }) => {
         console.log('❄️ Received ICE candidate');
-        if (peerConnection.current && peerConnection.current.remoteDescription) {
-          await peerConnection.current.addIceCandidate(new RTCIceCandidate(candidate));
+        if (peerConnectionRef.current && peerConnectionRef.current.remoteDescription) {
+          await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate));
         } else {
           iceCandidateQueue.current.push(candidate);
         }
       });
 
       newSocket.on('call_ended', () => {
-        console.log('📞 Call ended by peer');
         endCall();
       });
 
       newSocket.on('peer_disconnected', () => {
-        console.log('⚠️ Peer disconnected during call');
         endCall();
       });
 
-      newSocket.on('group_invitation', async (group: Group) => {
-        await createGroup(group);
-        newSocket.emit('join_group', group.id);
-        
-        const toast = document.createElement('div');
-        toast.className = 'fixed top-4 left-1/2 -translate-x-1/2 bg-primary text-white px-6 py-3 rounded-full shadow-2xl z-[100] font-bold animate-bounce';
-        toast.innerText = `You were added to group: ${group.name}`;
-        document.body.appendChild(toast);
-        setTimeout(() => toast.remove(), 5000);
-      });
-
-      newSocket.on('group_admin_promoted', async ({ groupId, phone }) => {
-        const group = await getGroup(groupId);
-        if (group) {
-          const currentAdmins = group.admins || [group.createdBy];
-          if (!currentAdmins.includes(phone)) {
-            const updatedAdmins = [...currentAdmins, phone];
-            await updateGroup({ ...group, admins: updatedAdmins });
-          }
-        }
-      });
-
-      newSocket.on('group_member_removed', async ({ groupId, phone }) => {
-        const group = await getGroup(groupId);
-        if (group) {
-          const updatedMembers = group.members.filter(m => m !== phone);
-          const updatedAdmins = (group.admins || [group.createdBy]).filter(a => a !== phone);
-          await updateGroup({ ...group, members: updatedMembers, admins: updatedAdmins });
-        }
-      });
-
-      newSocket.on('group_removed', async ({ groupId }) => {
-        await deleteGroup(groupId);
-        const toast = document.createElement('div');
-        toast.className = 'fixed top-4 left-1/2 -translate-x-1/2 bg-red-500 text-white px-6 py-3 rounded-full shadow-2xl z-[100] font-bold animate-bounce';
-        toast.innerText = `You were removed from a group`;
-        document.body.appendChild(toast);
-        setTimeout(() => toast.remove(), 3000);
-      });
-
       newSocket.on('receive_message', async (data: { from: string, message: Message, senderPhone?: string }) => {
-        // Check if chat exists
         let chat = await getChat(data.from);
         if (!chat) {
-          // If it's a group message and we don't have the group, we might need to fetch it (simplified here)
           chat = {
             id: data.from,
             name: data.senderPhone || data.from,
@@ -302,7 +224,6 @@ export default function App() {
           await addContact(chat);
         }
 
-        // Save the message to DB
         const isMe = data.senderPhone === profile?.phone;
         const receivedMessage = {
           ...data.message,
@@ -311,30 +232,19 @@ export default function App() {
         };
         await saveMessage(receivedMessage);
 
-        // Show notification if not on chat screen for this user AND it's not from me
         if (!isMe && (currentScreenRef.current !== 'chat' || selectedChatIdRef.current !== data.from)) {
           ringtone.playNotificationTone();
-          const toast = document.createElement('div');
-          toast.className = 'fixed top-4 left-1/2 -translate-x-1/2 bg-primary text-white px-6 py-3 rounded-full shadow-2xl z-[100] font-bold animate-bounce';
-          toast.innerText = `New message from ${chat?.name || data.from}`;
-          document.body.appendChild(toast);
-          setTimeout(() => toast.remove(), 3000);
         }
       });
 
       newSocket.on('message_read', async (data: { from: string, messageId?: string, chatId: string, isSelfUpdate?: boolean }) => {
         const targetChatId = data.chatId || data.from;
-        
         if (data.isSelfUpdate) {
-          // This means I read messages on another device
-          // Mark all incoming messages in this chat as read and reset unreadCount
           await markAllMessagesAsRead(targetChatId);
         } else {
-          // This means the other person read my messages
           if (data.messageId) {
             await updateMessageStatus(data.messageId, 'read');
           } else {
-            // All my messages in this chat read by the other person
             const allMessages = await getMessages(targetChatId);
             for (const msg of allMessages) {
               if (msg.senderId === 'me' && msg.status !== 'read') {
@@ -349,13 +259,13 @@ export default function App() {
         await deleteMessage(data.messageId);
       });
 
-    return () => {
-      newSocket.disconnect();
+      return () => {
+        newSocket.disconnect();
+      };
     };
-  };
 
-  setup();
-}, []);
+    setup();
+  }, []);
 
   const startCall = async (type: 'video' | 'audio', targetId?: string) => {
     try {
@@ -379,7 +289,7 @@ export default function App() {
 
       // 2. Create PeerConnection
       const pc = new RTCPeerConnection(STUN_SERVERS);
-      peerConnection.current = pc;
+      peerConnectionRef.current = pc;
       iceCandidateQueue.current = [];
       
       // 3. Add tracks BEFORE creating offer
@@ -390,14 +300,15 @@ export default function App() {
       // 4. Handle remote tracks
       pc.ontrack = (event) => {
         console.log('🎬 Remote track received (Caller)');
-        if (event.streams && event.streams[0]) {
-          setRemoteStream(event.streams[0]);
+        if (remoteVideoRef.current && event.streams[0]) {
+          remoteVideoRef.current.srcObject = event.streams[0];
         }
+        setRemoteStream(event.streams[0]);
       };
 
       // 5. Handle ICE candidates
       pc.onicecandidate = (event) => {
-        if (event.candidate && socket && id) {
+        if (event.candidate && socket) {
           socket.emit('ice_candidate', { to: id, candidate: event.candidate });
         }
       };
@@ -406,7 +317,7 @@ export default function App() {
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       
-      if (socket && id) {
+      if (socket) {
         socket.emit('join_call', { toPhone: id });
         socket.emit('offer', { to: id, offer });
       }
@@ -419,25 +330,20 @@ export default function App() {
     try {
       setIsIncomingCall(false);
       
-      // 1. Get local stream
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: callType === 'video' ? { facingMode: cameraFacingMode } : false, 
         audio: true 
       });
       setLocalStream(stream);
 
-      const pc = peerConnection.current;
-      if (!pc) {
-        console.error('No peer connection available to accept call');
-        return;
-      }
+      const pc = peerConnectionRef.current;
+      if (!pc) return;
 
-      // 2. Add local tracks to the existing PC (initialized in 'offer' listener)
+      // Add local tracks
       stream.getTracks().forEach(track => {
         pc.addTrack(track, stream);
       });
 
-      // 3. Create and send answer
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
 
@@ -453,7 +359,6 @@ export default function App() {
   const endCall = async () => {
     const duration = callStartTime ? Math.floor((Date.now() - callStartTime) / 1000) : 0;
     
-    // Save call log
     if (selectedChatId && socket) {
       socket.emit('end_call', { to: selectedChatId });
       
@@ -470,17 +375,17 @@ export default function App() {
       await saveCallLog(log);
     }
 
+    // Cleanup
     if (localStream) {
       localStream.getTracks().forEach(track => track.stop());
     }
-    if (peerConnection.current) {
-      peerConnection.current.close();
-      peerConnection.current = null;
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.close();
+      peerConnectionRef.current = null;
     }
     setLocalStream(null);
     setRemoteStream(null);
     setIsIncomingCall(false);
-    setCameraFacingMode('user');
     setCallStartTime(0);
     setCurrentScreen('main');
   };
@@ -493,10 +398,7 @@ export default function App() {
 
       let newStream: MediaStream;
       if (isSharing) {
-        newStream = await navigator.mediaDevices.getDisplayMedia({ 
-          video: true,
-          audio: false // Explicitly disable audio for better mobile compatibility
-        });
+        newStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
       } else {
         newStream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: cameraFacingMode },
@@ -505,7 +407,7 @@ export default function App() {
       }
 
       const videoTrack = newStream.getVideoTracks()[0];
-      const sender = peerConnection.current?.getSenders().find(s => s.track?.kind === 'video');
+      const sender = peerConnectionRef.current?.getSenders().find(s => s.track?.kind === 'video');
       
       if (sender && videoTrack) {
         await sender.replaceTrack(videoTrack);
@@ -516,92 +418,42 @@ export default function App() {
       }
       
       setLocalStream(newStream);
-      
       if (isSharing) {
         videoTrack.onended = () => toggleScreenShare(false);
       }
       return { success: true };
     } catch (err: any) {
       console.error('Error toggling screen share:', err);
-      if (err.name === 'NotAllowedError') {
-        return { success: false, error: 'PermissionDenied' };
-      }
-      if (err.name === 'NotFoundError' || err.name === 'NotSupportedError') {
-        return { success: false, error: 'NotSupported' };
-      }
-      return { success: false, error: 'Unknown' };
+      return { success: false, error: err.name === 'NotAllowedError' ? 'PermissionDenied' : 'NotSupported' };
     }
   };
 
   const switchCamera = async () => {
     if (!localStream) return;
-    
     try {
-      // Check if the device has multiple cameras
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const videoDevices = devices.filter(device => device.kind === 'videoinput');
-      
-      if (videoDevices.length < 2) {
-        console.warn('Only one camera detected. Camera switching may not be possible.');
-        // We still try to toggle facing mode as some browsers might handle it differently
-      }
-
       const newFacingMode = cameraFacingMode === 'user' ? 'environment' : 'user';
-      
       const newStream = await navigator.mediaDevices.getUserMedia({
-        video: { 
-          facingMode: { exact: newFacingMode } 
-        },
+        video: { facingMode: newFacingMode },
         audio: true
-      }).catch(async () => {
-        // Fallback if 'exact' fails
-        return await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: newFacingMode },
-          audio: true
-        });
       });
 
       const videoTrack = newStream.getVideoTracks()[0];
       const audioTrack = newStream.getAudioTracks()[0];
       
-      // Update peer connection
-      if (peerConnection.current) {
-        const senders = peerConnection.current.getSenders();
+      if (peerConnectionRef.current) {
+        const senders = peerConnectionRef.current.getSenders();
         const videoSender = senders.find(s => s.track?.kind === 'video');
         const audioSender = senders.find(s => s.track?.kind === 'audio');
         
-        if (videoSender && videoTrack) {
-          await videoSender.replaceTrack(videoTrack);
-        }
-        if (audioSender && audioTrack) {
-          await audioSender.replaceTrack(audioTrack);
-        }
+        if (videoSender && videoTrack) await videoSender.replaceTrack(videoTrack);
+        if (audioSender && audioTrack) await audioSender.replaceTrack(audioTrack);
       }
 
-      // Stop old tracks
       localStream.getTracks().forEach(track => track.stop());
-      
       setLocalStream(newStream);
       setCameraFacingMode(newFacingMode);
-      
-      console.log(`Switched to ${newFacingMode} camera`);
     } catch (err) {
       console.error('Error switching camera:', err);
-      // Try to fallback to any camera if specific facing mode fails
-      try {
-        const fallbackStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        setLocalStream(fallbackStream);
-      } catch (fallbackErr) {
-        console.error('Fallback camera access failed:', fallbackErr);
-      }
-    }
-  };
-
-  const handleReconnect = () => {
-    if (socket) {
-      console.log('Manual reconnection triggered...');
-      setIsConnecting(true);
-      socket.connect();
     }
   };
 
@@ -614,7 +466,7 @@ export default function App() {
             onlineUsers={onlineUsers}
             isConnected={isConnected}
             isConnecting={isConnecting}
-            onReconnect={handleReconnect}
+            onReconnect={() => socket?.connect()}
             onChatSelect={async (id) => {
               setSelectedChatId(id);
               const chat = await getChat(id);
@@ -718,6 +570,8 @@ export default function App() {
               onAccept={acceptCall}
               onSwitchCamera={switchCamera}
               onToggleScreenShare={toggleScreenShare}
+              localVideoRef={localVideoRef}
+              remoteVideoRef={remoteVideoRef}
             />
           )}
 
@@ -751,7 +605,6 @@ export default function App() {
           )}
         </div>
 
-        {/* Bottom Navigation Bar - Only visible on main screen */}
         {currentScreen === 'main' && (
           <nav className="bg-nav-bg flex items-center justify-around py-3 px-6 z-20">
             <button onClick={() => setActiveTab('chats')} className="flex flex-col items-center gap-1">
