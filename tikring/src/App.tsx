@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { MessageSquare, Compass, Users, Phone, User } from 'lucide-react';
+import { MessageSquare, Compass, Users, Phone, User, Mic, MicOff, Grid, Volume2, UserPlus, Video, PhoneOff, Check, X, Save } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import HomeScreen from './components/HomeScreen';
 import ChatScreen from './components/ChatScreen';
 import VideoCall from './components/VideoCall';
@@ -21,6 +22,235 @@ const STUN_SERVERS = {
   ],
 };
 
+function ControlBtn({ icon: Icon, label, active, onClick }: any) {
+  return (
+    <button 
+      onClick={onClick}
+      className="flex flex-col items-center gap-2 group"
+      style={{ touchAction: 'manipulation' }}
+    >
+      <div className={cn(
+        "w-14 h-14 rounded-full flex items-center justify-center transition-all duration-300",
+        active ? "bg-primary text-white shadow-lg shadow-primary/30" : "bg-surface text-text-secondary group-active:bg-primary/10"
+      )}>
+        <Icon className="w-6 h-6" />
+      </div>
+      <span className={cn(
+        "text-[10px] font-bold uppercase tracking-widest transition-colors",
+        active ? "text-primary" : "text-text-secondary"
+      )}>{label}</span>
+    </button>
+  );
+}
+
+function AudioCall({ 
+  callerName, 
+  avatar, 
+  onEndCall, 
+  isIncoming, 
+  onAccept, 
+  onMinimize, 
+  onSwitchToVideo,
+  localStream,
+  callDuration,
+  formatTime,
+  isMuted,
+  setIsMuted,
+  isSpeakerOn,
+  setIsSpeakerOn
+}: any) {
+  const [showKeypad, setShowKeypad] = useState(false);
+  const [showAddCall, setShowAddCall] = useState(false);
+
+  const toggleMute = () => {
+    if (localStream) {
+      const audioTrack = localStream.getAudioTracks()[0];
+      if (audioTrack) {
+        audioTrack.enabled = !audioTrack.enabled;
+        setIsMuted(!audioTrack.enabled);
+      }
+    }
+  };
+
+  const keypadButtons = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'];
+
+  if (isIncoming) {
+    return (
+      <div className="fixed inset-0 bg-white z-[100] flex flex-col items-center justify-between py-20 px-6 font-sans">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-32 h-32 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden border-4 border-surface shadow-xl">
+             {avatar ? (
+               <img src={avatar} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+             ) : (
+               <span className="text-5xl font-bold text-primary">{callerName[0]}</span>
+             )}
+          </div>
+          <h2 className="text-2xl font-bold text-text-primary">{callerName}</h2>
+          <p className="text-text-secondary font-medium animate-pulse">Audio Call</p>
+        </div>
+
+        <div className="flex gap-16">
+          <button 
+            onClick={onEndCall}
+            className="flex flex-col items-center gap-3 group"
+            style={{ touchAction: 'manipulation' }}
+          >
+            <div className="w-16 h-16 rounded-full bg-red-500 flex items-center justify-center text-white shadow-lg shadow-red-500/30 group-active:scale-90 transition-transform">
+              <PhoneOff className="w-8 h-8" />
+            </div>
+            <span className="text-sm font-bold text-red-500 uppercase tracking-wider">Decline</span>
+          </button>
+
+          <button 
+            onClick={onAccept}
+            className="flex flex-col items-center gap-3 group"
+            style={{ touchAction: 'manipulation' }}
+          >
+            <div className="w-16 h-16 rounded-full bg-online flex items-center justify-center text-white shadow-lg shadow-online/30 group-active:scale-90 transition-transform">
+              <Check className="w-8 h-8" />
+            </div>
+            <span className="text-sm font-bold text-online uppercase tracking-wider">Accept</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 bg-white z-[100] flex flex-col items-center justify-between py-12 px-6 font-sans overflow-hidden">
+      {/* Top Info */}
+      <div className="flex flex-col items-center gap-2">
+        <h2 className="text-xl font-bold text-text-primary">{callerName}</h2>
+        <p className="text-text-secondary font-mono text-lg font-bold">
+          {formatTime(callDuration)}
+        </p>
+      </div>
+
+      {/* Middle Avatar */}
+      <div className="relative">
+        <div className="w-48 h-48 rounded-full bg-primary/5 flex items-center justify-center overflow-hidden border-8 border-surface shadow-2xl">
+          {avatar ? (
+            <img src={avatar} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+          ) : (
+            <span className="text-7xl font-bold text-primary">{callerName[0]}</span>
+          )}
+        </div>
+        <div className="absolute -bottom-2 -right-2 w-12 h-12 bg-online rounded-full border-4 border-white animate-pulse shadow-lg" />
+      </div>
+
+      {/* Controls Grid */}
+      <div className="w-full max-w-xs flex flex-col gap-8">
+        <div className="grid grid-cols-3 gap-4">
+          {/* Row 1 */}
+          <ControlBtn 
+            icon={isMuted ? MicOff : Mic} 
+            label="Mute" 
+            active={isMuted} 
+            onClick={toggleMute} 
+          />
+          <ControlBtn 
+            icon={Grid} 
+            label="Keypad" 
+            active={showKeypad} 
+            onClick={() => setShowKeypad(!showKeypad)} 
+          />
+          <ControlBtn 
+            icon={Volume2} 
+            label="Speaker" 
+            active={isSpeakerOn} 
+            onClick={() => setIsSpeakerOn(!isSpeakerOn)} 
+          />
+          
+          {/* Row 2 */}
+          <ControlBtn 
+            icon={UserPlus} 
+            label="Add Call" 
+            onClick={() => setShowAddCall(true)} 
+          />
+          <ControlBtn 
+            icon={Video} 
+            label="Video" 
+            onClick={onSwitchToVideo} 
+          />
+          <ControlBtn 
+            icon={MessageSquare} 
+            label="Message" 
+            onClick={onMinimize} 
+          />
+        </div>
+
+        {/* End Call Button */}
+        <div className="flex justify-center mt-4">
+          <button 
+            onClick={onEndCall}
+            className="w-16 h-16 rounded-full bg-red-500 flex items-center justify-center text-white shadow-xl shadow-red-500/30 active:scale-90 transition-transform"
+            style={{ touchAction: 'manipulation' }}
+          >
+            <PhoneOff className="w-8 h-8" />
+          </button>
+        </div>
+      </div>
+
+      {/* Keypad Overlay */}
+      <AnimatePresence>
+        {showKeypad && (
+          <motion.div 
+            initial={{ y: '100%' }}
+            animate={{ y: 0 }}
+            exit={{ y: '100%' }}
+            className="absolute inset-0 bg-white z-[110] flex flex-col p-8"
+          >
+            <div className="flex justify-end mb-8">
+              <button onClick={() => setShowKeypad(false)} className="p-2 bg-surface rounded-full">
+                <X className="w-6 h-6 text-text-secondary" />
+              </button>
+            </div>
+            <div className="grid grid-cols-3 gap-8 flex-1 content-center">
+              {keypadButtons.map(key => (
+                <button 
+                  key={key}
+                  className="w-20 h-20 rounded-full bg-surface flex items-center justify-center text-2xl font-bold text-text-primary active:bg-primary active:text-white transition-colors mx-auto"
+                  style={{ touchAction: 'manipulation' }}
+                >
+                  {key}
+                </button>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Add Call Overlay */}
+      <AnimatePresence>
+        {showAddCall && (
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm z-[120] flex items-center justify-center p-6"
+          >
+            <div className="bg-white rounded-[32px] p-8 w-full max-w-sm flex flex-col items-center gap-6 shadow-2xl">
+              <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
+                <UserPlus className="w-8 h-8 text-primary" />
+              </div>
+              <div className="text-center">
+                <h3 className="text-xl font-bold text-text-primary">Add Participants</h3>
+                <p className="text-text-secondary mt-2">Group calling feature is coming soon!</p>
+              </div>
+              <button 
+                onClick={() => setShowAddCall(false)}
+                className="w-full py-4 bg-primary text-white font-bold rounded-2xl active:scale-95 transition-transform"
+              >
+                Got it
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<'chats' | 'calls' | 'explore' | 'contacts'>('chats');
   const [currentScreen, setCurrentScreen] = useState<'main' | 'chat' | 'call' | 'profile' | 'friend_profile' | 'create_group' | 'group_info'>('main');
@@ -30,6 +260,11 @@ export default function App() {
   const [selectedFriend, setSelectedFriend] = useState<Chat | null>(null);
   const [callStartTime, setCallStartTime] = useState<number>(0);
   const [callType, setCallType] = useState<'video' | 'audio'>('video');
+  const [callDuration, setCallDuration] = useState(0);
+  const [callConnected, setCallConnected] = useState(false);
+  const [isCallMinimized, setIsCallMinimized] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isSpeakerOn, setIsSpeakerOn] = useState(false);
   
   // WebRTC & Socket State
   const [socket, setSocket] = useState<Socket | null>(null);
@@ -59,6 +294,30 @@ export default function App() {
   useEffect(() => {
     selectedChatIdRef.current = selectedChatId;
   }, [selectedChatId]);
+
+  useEffect(() => {
+    if (remoteStream) {
+      setCallConnected(true);
+    }
+  }, [remoteStream]);
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (callConnected && (currentScreen === 'call' || isCallMinimized)) {
+      timer = setInterval(() => {
+        setCallDuration(prev => prev + 1);
+      }, 1000);
+    } else if (!callConnected) {
+      setCallDuration(0);
+    }
+    return () => clearInterval(timer);
+  }, [callConnected, currentScreen, isCallMinimized]);
+
+  const formatTime = (seconds: number) => {
+    const m = Math.floor(seconds / 60).toString().padStart(2, "0");
+    const s = (seconds % 60).toString().padStart(2, "0");
+    return `${m}:${s}`;
+  };
 
   useEffect(() => {
     if (isIncomingCall) {
@@ -435,6 +694,11 @@ export default function App() {
     setRemoteStream(null);
     setIsIncomingCall(false);
     setCallStartTime(0);
+    setCallConnected(false);
+    setCallDuration(0);
+    setIsCallMinimized(false);
+    setIsMuted(false);
+    setIsSpeakerOn(false);
     setCurrentScreen('main');
   };
 
@@ -502,6 +766,50 @@ export default function App() {
       setCameraFacingMode(newFacingMode);
     } catch (err) {
       console.error('Error switching camera:', err);
+    }
+  };
+
+  const switchToVideo = async () => {
+    try {
+      setCallType('video');
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: cameraFacingMode },
+        audio: true
+      });
+      
+      if (localStream) {
+        localStream.getTracks().forEach(t => t.stop());
+      }
+      
+      setLocalStream(stream);
+      
+      if (peerConnectionRef.current) {
+        const senders = peerConnectionRef.current.getSenders();
+        const videoTrack = stream.getVideoTracks()[0];
+        const audioTrack = stream.getAudioTracks()[0];
+        
+        const videoSender = senders.find(s => s.track?.kind === 'video');
+        const audioSender = senders.find(s => s.track?.kind === 'audio');
+        
+        if (videoSender && videoTrack) {
+          await videoSender.replaceTrack(videoTrack);
+        } else if (videoTrack) {
+          peerConnectionRef.current.addTrack(videoTrack, stream);
+        }
+        
+        if (audioSender && audioTrack) {
+          await audioSender.replaceTrack(audioTrack);
+        }
+        
+        const offer = await peerConnectionRef.current.createOffer();
+        await peerConnectionRef.current.setLocalDescription(offer);
+        if (socket && selectedChatId) {
+          const chat = await getChat(selectedChatId);
+          socket.emit('offer', { to: chat?.phone || selectedChatId, offer, type: 'video' });
+        }
+      }
+    } catch (err) {
+      console.error('Error switching to video:', err);
     }
   };
 
@@ -597,6 +905,22 @@ export default function App() {
             />
           )}
 
+          {isCallMinimized && (
+            <div 
+              onClick={() => {
+                setIsCallMinimized(false);
+                setCurrentScreen('call');
+              }}
+              className="absolute top-0 left-0 right-0 bg-primary text-white py-3 px-4 flex items-center justify-between z-[100] cursor-pointer shadow-lg border-b border-white/10"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
+                <span className="text-xs font-bold">Call with {selectedChatName}</span>
+              </div>
+              <span className="font-mono font-bold text-sm">{formatTime(callDuration)}</span>
+            </div>
+          )}
+
           {currentScreen === 'friend_profile' && selectedFriend && (
             <FriendProfileScreen 
               friend={selectedFriend}
@@ -609,18 +933,40 @@ export default function App() {
           )}
 
           {currentScreen === 'call' && (
-            <VideoCall 
-              callerName={selectedChatName || "Incoming..."}
-              localStream={localStream}
-              remoteStream={remoteStream}
-              onEndCall={endCall}
-              isIncoming={isIncomingCall}
-              onAccept={acceptCall}
-              onSwitchCamera={switchCamera}
-              onToggleScreenShare={toggleScreenShare}
-              localVideoRef={localVideoRef}
-              remoteVideoRef={remoteVideoRef}
-            />
+            callType === 'video' ? (
+              <VideoCall 
+                callerName={selectedChatName || "Incoming..."}
+                localStream={localStream}
+                remoteStream={remoteStream}
+                onEndCall={endCall}
+                isIncoming={isIncomingCall}
+                onAccept={acceptCall}
+                onSwitchCamera={switchCamera}
+                onToggleScreenShare={toggleScreenShare}
+                localVideoRef={localVideoRef}
+                remoteVideoRef={remoteVideoRef}
+              />
+            ) : (
+              <AudioCall 
+                callerName={selectedChatName || "Incoming..."}
+                avatar={selectedChatAvatar}
+                onEndCall={endCall}
+                isIncoming={isIncomingCall}
+                onAccept={acceptCall}
+                onMinimize={() => {
+                  setIsCallMinimized(true);
+                  setCurrentScreen('chat');
+                }}
+                onSwitchToVideo={switchToVideo}
+                localStream={localStream}
+                callDuration={callDuration}
+                formatTime={formatTime}
+                isMuted={isMuted}
+                setIsMuted={setIsMuted}
+                isSpeakerOn={isSpeakerOn}
+                setIsSpeakerOn={setIsSpeakerOn}
+              />
+            )
           )}
 
           {currentScreen === 'profile' && (
