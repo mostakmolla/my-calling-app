@@ -405,12 +405,16 @@ export default function ContactsScreen({ onContactSelect, onViewProfile, onBack,
         <div className="px-4 pb-4">
           <h4 className="text-[11px] font-black text-primary uppercase tracking-widest mb-3 ml-1">Global Online Users</h4>
           <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2">
-            {onlineUsers.map((user) => (
-              <div 
-                key={`global-contact-${user.phone || user.id || Math.random()}`} 
-                className="flex flex-col items-center gap-1.5 flex-shrink-0 cursor-pointer group"
-                onClick={() => handleAddGlobalUser(user)}
-              >
+            {onlineUsers
+              .filter((user, index, self) => 
+                index === self.findIndex((u) => u.phone === user.phone)
+              )
+              .map((user) => (
+                <div 
+                  key={`global-contact-${user.phone || user.id || Math.random()}`} 
+                  className="flex flex-col items-center gap-1.5 flex-shrink-0 cursor-pointer group"
+                  onClick={() => handleAddGlobalUser(user)}
+                >
                 <div className="relative">
                   <div className="w-14 h-14 rounded-2xl p-[2px] bg-gradient-to-tr from-primary to-blue-400 group-hover:scale-105 transition-transform">
                     <img 

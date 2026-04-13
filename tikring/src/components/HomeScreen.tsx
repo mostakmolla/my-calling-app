@@ -266,8 +266,12 @@ export default function HomeScreen({
         </div>
         
         {/* Global Online Users */}
-        {onlineUsers.length > 0 && onlineUsers.map((user) => (
-          <div key={`global-${user.phone || user.id || Math.random()}`} className="flex flex-col items-center flex-shrink-0 gap-1">
+        {onlineUsers.length > 0 && onlineUsers
+          .filter((user, index, self) => 
+            index === self.findIndex((u) => u.phone === user.phone)
+          )
+          .map((user) => (
+            <div key={`global-${user.phone || user.id || Math.random()}`} className="flex flex-col items-center flex-shrink-0 gap-1">
             <div 
               className="relative cursor-pointer" 
               onClick={() => handleGlobalUserClick(user)}

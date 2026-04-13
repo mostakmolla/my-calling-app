@@ -64,11 +64,10 @@ function AudioCall({
 
   const toggleMute = () => {
     if (localStream) {
-      const audioTrack = localStream.getAudioTracks()[0];
-      if (audioTrack) {
-        audioTrack.enabled = !audioTrack.enabled;
-        setIsMuted(!audioTrack.enabled);
-      }
+      localStream.getAudioTracks().forEach(track => {
+        track.enabled = isMuted; // toggle local microphone only
+      });
+      setIsMuted(!isMuted);
     }
   };
 
@@ -282,6 +281,8 @@ export default function App() {
   const iceCandidateQueue = useRef<RTCIceCandidateInit[]>([]);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const localAudioRef = useRef<HTMLAudioElement>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement>(null);
   
   // Helper refs for socket listeners
   const currentScreenRef = useRef(currentScreen);
@@ -393,8 +394,9 @@ export default function App() {
         });
       });
 
-      newSocket.on('offer', async ({ from, offer, type }) => {
-        console.log('📞 Incoming offer from:', from, 'Type:', type);
+      newSocket.on('offer', async ({ from, offer, type, callType: incomingCallType }) => {
+        const typeOfCall = incomingCallType || type || 'video';
+        console.log('📞 Incoming offer from:', from, 'Type:', typeOfCall);
         
         // If we are already in a call or processing one, ignore
         if (peerConnectionRef.current && peerConnectionRef.current.signalingState !== 'stable') {
@@ -409,7 +411,7 @@ export default function App() {
         try {
           setCallerId(from);
           setIsIncomingCall(true);
-          setCallType(type || 'video');
+          setCallType(typeOfCall);
 
           const chat = await getChat(from);
           if (chat) {
@@ -432,6 +434,13 @@ export default function App() {
             console.log('🎬 Remote track received (Callee)');
             const stream = event.streams[0] || new MediaStream([event.track]);
             setRemoteStream(stream);
+            
+            if (typeOfCall === 'audio' && remoteAudioRef.current) {
+              remoteAudioRef.current.srcObject = stream;
+              remoteAudioRef.current.muted = false;
+              remoteAudioRef.current.volume = 1.0;
+              remoteAudioRef.current.play().catch(err => console.error("Remote audio play error:", err));
+            }
           };
 
           pc.onicecandidate = (event) => {
@@ -586,22 +595,52 @@ export default function App() {
       setCallType(type);
       setCallStartTime(Date.now());
 
-      // 1. Get local stream
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: type === 'video' ? { facingMode: cameraFacingMode } : false,
-        audio: true,
-      });
+      // 1. Get local stream with correct constraints
+      let stream;
+      if (type === 'audio') {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          },
+          video: false
+        });
+      } else {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: cameraFacingMode, width: { ideal: 640 }, height: { ideal: 480 } },
+          audio: true,
+        });
+      }
+      
+      // Ensure audio track is enabled
+      const audioTrack = stream.getAudioTracks()[0];
+      if (audioTrack) {
+        audioTrack.enabled = true;
+        console.log("Audio track enabled:", audioTrack.enabled);
+      }
+
       setLocalStream(stream);
       setCurrentScreen('call');
 
       // 2. Create PeerConnection
-      const pc = new RTCPeerConnection(STUN_SERVERS);
+      const pc = new RTCPeerConnection({
+        iceServers: [
+          { urls: "stun:stun.l.google.com:19302" },
+          { urls: "stun:stun1.l.google.com:19302" },
+          { urls: "stun:stun2.l.google.com:19302" }
+        ]
+      });
       peerConnectionRef.current = pc;
       iceCandidateQueue.current = [];
       
-      // 3. Add tracks BEFORE creating offer
+      // 3. Add tracks BEFORE creating offer - check for duplicates
+      const senders = pc.getSenders();
       stream.getTracks().forEach(track => {
-        pc.addTrack(track, stream);
+        const alreadyAdded = senders.find(s => s.track === track);
+        if (!alreadyAdded) {
+          pc.addTrack(track, stream);
+        }
       });
 
       // 4. Handle remote tracks
@@ -609,6 +648,13 @@ export default function App() {
         console.log('🎬 Remote track received (Caller)');
         const stream = event.streams[0] || new MediaStream([event.track]);
         setRemoteStream(stream);
+        
+        if (type === 'audio' && remoteAudioRef.current) {
+          remoteAudioRef.current.srcObject = stream;
+          remoteAudioRef.current.muted = false;
+          remoteAudioRef.current.volume = 1.0;
+          remoteAudioRef.current.play().catch(err => console.error("Remote audio play error:", err));
+        }
       };
 
       // 5. Handle ICE candidates
@@ -623,8 +669,8 @@ export default function App() {
       await pc.setLocalDescription(offer);
       
       if (socket) {
-        socket.emit('join_call', { toPhone: targetPhone });
-        socket.emit('offer', { to: targetPhone, offer, type });
+        socket.emit('join_call', { toPhone: targetPhone, callType: type });
+        socket.emit('offer', { to: targetPhone, offer, type, callType: type });
       }
     } catch (err) {
       console.error('Error starting call:', err);
@@ -635,26 +681,48 @@ export default function App() {
     try {
       setIsIncomingCall(false);
       
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: callType === 'video' ? { facingMode: cameraFacingMode } : false, 
-        audio: true 
-      });
+      let stream;
+      if (callType === 'audio') {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          },
+          video: false
+        });
+      } else {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: cameraFacingMode, width: { ideal: 640 }, height: { ideal: 480 } },
+          audio: true,
+        });
+      }
+      
+      const audioTrack = stream.getAudioTracks()[0];
+      if (audioTrack) {
+        audioTrack.enabled = true;
+      }
+
       setLocalStream(stream);
 
       const pc = peerConnectionRef.current;
       if (!pc) return;
 
-      // Add local tracks
+      // Add local tracks - check for duplicates
+      const senders = pc.getSenders();
       stream.getTracks().forEach(track => {
-        pc.addTrack(track, stream);
+        const alreadyAdded = senders.find(s => s.track === track);
+        if (!alreadyAdded) {
+          pc.addTrack(track, stream);
+        }
       });
 
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
 
       if (socket && callerId) {
-        socket.emit('join_call', { toPhone: callerId });
-        socket.emit('answer', { to: callerId, answer });
+        socket.emit('join_call', { toPhone: callerId, callType: callType });
+        socket.emit('answer', { to: callerId, answer, callType: callType });
       }
     } catch (err) {
       console.error('Error accepting call:', err);
@@ -904,6 +972,10 @@ export default function App() {
               }}
             />
           )}
+
+          {/* Hidden Audio Elements for Audio Calls */}
+          <audio ref={localAudioRef} autoPlay muted playsInline className="hidden" />
+          <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
 
           {isCallMinimized && (
             <div 
