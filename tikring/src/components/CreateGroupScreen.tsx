@@ -72,7 +72,7 @@ export default function CreateGroupScreen({ onBack, onGroupCreated, socket }: Cr
       {/* Header */}
       <header className="sticky top-0 z-30 flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-white shadow-sm">
         <div className="flex items-center gap-3">
-          <button onClick={step === 1 ? onBack : () => setStep(1)}>
+          <button onClick={step === 1 ? onBack : () => setStep(1)} style={{ touchAction: 'manipulation' }}>
             <ArrowLeft className="w-6 h-6 text-primary" />
           </button>
           <div>
@@ -88,6 +88,7 @@ export default function CreateGroupScreen({ onBack, onGroupCreated, socket }: Cr
           <button 
             onClick={() => setStep(2)}
             className="text-primary font-bold text-sm"
+            style={{ touchAction: 'manipulation' }}
           >
             Next
           </button>
@@ -100,6 +101,7 @@ export default function CreateGroupScreen({ onBack, onGroupCreated, socket }: Cr
               "font-bold text-sm transition-colors",
               groupName.trim() ? "text-primary" : "text-gray-300"
             )}
+            style={{ touchAction: 'manipulation' }}
           >
             Create
           </button>
@@ -143,6 +145,7 @@ export default function CreateGroupScreen({ onBack, onGroupCreated, socket }: Cr
                       <button 
                         onClick={() => toggleContact(id)}
                         className="absolute -top-1 -right-1 bg-gray-500 text-white rounded-full p-0.5 border-2 border-white"
+                        style={{ touchAction: 'manipulation' }}
                       >
                         <X className="w-3 h-3" />
                       </button>

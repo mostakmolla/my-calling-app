@@ -243,7 +243,7 @@ export default function FriendProfileScreen({ friend, onBack, onMessage, onCall,
     >
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-white sticky top-0 z-10">
-        <button onClick={onBack} className="p-1">
+        <button onClick={onBack} className="p-1" style={{ touchAction: 'manipulation' }}>
           <ArrowLeft className="w-6 h-6 text-primary" />
         </button>
         <h2 className="text-lg font-bold text-text-primary">Profile</h2>
@@ -251,6 +251,7 @@ export default function FriendProfileScreen({ friend, onBack, onMessage, onCall,
           <button 
             onClick={() => setIsMenuOpen(!isMenuOpen)}
             className="p-1 hover:bg-surface rounded-full transition-colors"
+            style={{ touchAction: 'manipulation' }}
           >
             <MoreVertical className="w-6 h-6 text-primary" />
           </button>
@@ -269,6 +270,7 @@ export default function FriendProfileScreen({ friend, onBack, onMessage, onCall,
                     "w-full px-4 py-3 text-left text-sm font-bold flex items-center gap-3 transition-colors",
                     friendStatus === 'blocked' ? "text-green-600 hover:bg-green-50" : "text-red-500 hover:bg-red-50"
                   )}
+                  style={{ touchAction: 'manipulation' }}
                 >
                   {friendStatus === 'blocked' ? <CheckCircle2 className="w-4 h-4" /> : <ShieldAlert className="w-4 h-4" />}
                   {friendStatus === 'blocked' ? 'Unblock User' : 'Block User'}
@@ -276,6 +278,7 @@ export default function FriendProfileScreen({ friend, onBack, onMessage, onCall,
                 <button 
                   onClick={() => setConfirmModal({ isOpen: true, type: 'delete' })}
                   className="w-full px-4 py-3 text-left text-sm font-bold text-red-500 hover:bg-red-50 flex items-center gap-3 transition-colors"
+                  style={{ touchAction: 'manipulation' }}
                 >
                   <Trash2 className="w-4 h-4" />
                   Delete Contact
@@ -326,6 +329,7 @@ export default function FriendProfileScreen({ friend, onBack, onMessage, onCall,
               <button 
                 onClick={handleAcceptRequest}
                 className="bg-primary text-white px-6 py-2 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-primary/20"
+                style={{ touchAction: 'manipulation' }}
               >
                 <Check className="w-4 h-4" />
                 Accept
@@ -333,6 +337,7 @@ export default function FriendProfileScreen({ friend, onBack, onMessage, onCall,
               <button 
                 onClick={handleDelete}
                 className="bg-surface text-text-secondary px-6 py-2 rounded-xl font-bold flex items-center gap-2"
+                style={{ touchAction: 'manipulation' }}
               >
                 <X className="w-4 h-4" />
                 Decline
@@ -344,6 +349,7 @@ export default function FriendProfileScreen({ friend, onBack, onMessage, onCall,
             <button 
               onClick={handleSendRequest}
               className="mt-4 bg-primary text-white px-8 py-2.5 rounded-2xl font-bold shadow-lg shadow-primary/20 flex items-center gap-2 active:scale-95 transition-transform"
+              style={{ touchAction: 'manipulation' }}
             >
               <UserPlus2 className="w-4 h-4" />
               Send Friend Request
@@ -354,6 +360,7 @@ export default function FriendProfileScreen({ friend, onBack, onMessage, onCall,
             <button 
               onClick={onMessage}
               className="flex flex-col items-center gap-2 group active:scale-95 transition-transform"
+              style={{ touchAction: 'manipulation' }}
             >
               <div className="w-14 h-14 bg-primary/10 rounded-2xl flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-all shadow-sm">
                 <MessageSquare className="w-6 h-6" />
@@ -363,6 +370,7 @@ export default function FriendProfileScreen({ friend, onBack, onMessage, onCall,
             <button 
               onClick={() => onCall('audio')}
               className="flex flex-col items-center gap-2 group active:scale-95 transition-transform"
+              style={{ touchAction: 'manipulation' }}
             >
               <div className="w-14 h-14 bg-primary/10 rounded-2xl flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-all shadow-sm">
                 <Phone className="w-6 h-6" />
@@ -372,6 +380,7 @@ export default function FriendProfileScreen({ friend, onBack, onMessage, onCall,
             <button 
               onClick={() => onCall('video')}
               className="flex flex-col items-center gap-2 group active:scale-95 transition-transform"
+              style={{ touchAction: 'manipulation' }}
             >
               <div className="w-14 h-14 bg-primary/10 rounded-2xl flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-all shadow-sm">
                 <Video className="w-6 h-6" />
@@ -396,6 +405,7 @@ export default function FriendProfileScreen({ friend, onBack, onMessage, onCall,
                 "flex-1 flex flex-col items-center py-3 gap-1 transition-colors relative",
                 activeTab === tab.id ? "text-primary" : "text-text-secondary"
               )}
+              style={{ touchAction: 'manipulation' }}
             >
               <tab.icon className="w-5 h-5" />
               <span className="text-[10px] font-bold uppercase tracking-wider">{tab.label}</span>
@@ -459,12 +469,14 @@ export default function FriendProfileScreen({ friend, onBack, onMessage, onCall,
                     "flex-1 py-3 rounded-xl font-bold text-white shadow-lg",
                     confirmModal.type === 'unblock' ? "bg-green-500 shadow-green-500/20" : "bg-red-500 shadow-red-500/20"
                   )}
+                  style={{ touchAction: 'manipulation' }}
                 >
                   Confirm
                 </button>
                 <button 
                   onClick={() => setConfirmModal({ ...confirmModal, isOpen: false })}
                   className="flex-1 bg-surface py-3 rounded-xl font-bold text-text-secondary"
+                  style={{ touchAction: 'manipulation' }}
                 >
                   Cancel
                 </button>
@@ -484,14 +496,14 @@ export default function FriendProfileScreen({ friend, onBack, onMessage, onCall,
             className="fixed inset-0 bg-black z-[100] flex flex-col"
           >
             <header className="flex items-center justify-between px-4 py-4 z-10">
-              <button onClick={() => setSelectedMedia(null)} className="p-2 bg-white/10 rounded-full backdrop-blur-md">
+              <button onClick={() => setSelectedMedia(null)} className="p-2 bg-white/10 rounded-full backdrop-blur-md" style={{ touchAction: 'manipulation' }}>
                 <X className="w-6 h-6 text-white" />
               </button>
               <div className="text-center">
                 <p className="text-white font-bold text-sm uppercase tracking-widest">{selectedMedia.type}</p>
                 <p className="text-white/60 text-[10px]">Shared by {friend.name}</p>
               </div>
-              <button className="p-2 bg-white/10 rounded-full backdrop-blur-md">
+              <button className="p-2 bg-white/10 rounded-full backdrop-blur-md" style={{ touchAction: 'manipulation' }}>
                 <MoreVertical className="w-6 h-6 text-white" />
               </button>
             </header>
@@ -528,7 +540,7 @@ export default function FriendProfileScreen({ friend, onBack, onMessage, onCall,
                     <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mt-3 mb-4" onClick={() => setShowComments(false)} />
                     <div className="px-6 flex items-center justify-between mb-4">
                       <h3 className="font-bold text-lg text-text-primary">Comments</h3>
-                      <button onClick={() => setShowComments(false)} className="text-primary font-bold text-sm">Close</button>
+                      <button onClick={() => setShowComments(false)} className="text-primary font-bold text-sm" style={{ touchAction: 'manipulation' }}>Close</button>
                     </div>
                     
                     <div className="flex-1 overflow-y-auto px-6 space-y-4">
@@ -565,7 +577,7 @@ export default function FriendProfileScreen({ friend, onBack, onMessage, onCall,
                           className="flex-1 bg-transparent border-none focus:outline-none text-sm"
                           onKeyDown={(e) => e.key === 'Enter' && handleAddComment()}
                         />
-                        <button onClick={handleAddComment} className="text-primary">
+                        <button onClick={handleAddComment} className="text-primary" style={{ touchAction: 'manipulation' }}>
                           <Send className="w-5 h-5" />
                         </button>
                       </div>
@@ -594,6 +606,7 @@ export default function FriendProfileScreen({ friend, onBack, onMessage, onCall,
                         }}
                         className="text-2xl hover:scale-125 transition-transform active:scale-90 p-1"
                         title={reaction.label}
+                        style={{ touchAction: 'manipulation' }}
                       >
                         {reaction.emoji}
                       </button>
@@ -609,6 +622,7 @@ export default function FriendProfileScreen({ friend, onBack, onMessage, onCall,
                   else setCurrentReaction('👍');
                 }}
                 className="flex flex-col items-center gap-1.5 text-white/70 hover:text-white transition-all hover:scale-110"
+                style={{ touchAction: 'manipulation' }}
               >
                 <div className="relative">
                   {currentReaction ? (
@@ -624,6 +638,7 @@ export default function FriendProfileScreen({ friend, onBack, onMessage, onCall,
               <button 
                 onClick={() => setShowComments(true)}
                 className="flex flex-col items-center gap-1.5 text-white/70 hover:text-white transition-all hover:scale-110"
+                style={{ touchAction: 'manipulation' }}
               >
                 <MessageCircle className="w-6 h-6" />
                 <span className="text-[10px] font-bold uppercase tracking-tighter">{selectedMedia.comments || '0'}</span>
@@ -631,11 +646,12 @@ export default function FriendProfileScreen({ friend, onBack, onMessage, onCall,
               <button 
                 onClick={() => setShowShareModal(true)}
                 className="flex flex-col items-center gap-1.5 text-white/70 hover:text-white transition-all hover:scale-110"
+                style={{ touchAction: 'manipulation' }}
               >
                 <Share2 className="w-6 h-6" />
                 <span className="text-[10px] font-bold uppercase tracking-tighter">Share</span>
               </button>
-              <button className="flex flex-col items-center gap-1.5 text-white/70 hover:text-white transition-all hover:scale-110">
+              <button className="flex flex-col items-center gap-1.5 text-white/70 hover:text-white transition-all hover:scale-110" style={{ touchAction: 'manipulation' }}>
                 <ImageIcon className="w-6 h-6" />
                 <span className="text-[10px] font-bold uppercase tracking-tighter">Save</span>
               </button>
@@ -673,6 +689,7 @@ export default function FriendProfileScreen({ friend, onBack, onMessage, onCall,
                           "p-2 rounded-xl transition-all",
                           isCopied ? "bg-green-500 text-white" : "bg-primary text-white"
                         )}
+                        style={{ touchAction: 'manipulation' }}
                       >
                         {isCopied ? <CheckCircle2 className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
                       </button>
@@ -692,6 +709,7 @@ export default function FriendProfileScreen({ friend, onBack, onMessage, onCall,
                     <button 
                       onClick={() => setShowShareModal(false)}
                       className="w-full bg-surface text-text-primary font-bold py-4 rounded-2xl active:scale-95 transition-transform"
+                      style={{ touchAction: 'manipulation' }}
                     >
                       Cancel
                     </button>

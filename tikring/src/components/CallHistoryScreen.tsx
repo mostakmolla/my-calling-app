@@ -56,7 +56,7 @@ export default function CallHistoryScreen({ onBack, onCall }: CallHistoryScreenP
   return (
     <div className="flex flex-col h-full bg-white relative overflow-hidden">
       <header className="sticky top-0 z-30 flex items-center gap-4 px-4 py-4 border-b border-gray-100 bg-white shadow-sm">
-        <button onClick={onBack} className="p-1 hover:bg-surface rounded-full transition-colors">
+        <button onClick={onBack} className="p-1 hover:bg-surface rounded-full transition-colors" style={{ touchAction: 'manipulation' }}>
           <ArrowLeft className="w-6 h-6 text-primary" />
         </button>
         <h2 className="text-xl font-bold text-text-primary">Call History</h2>
@@ -120,12 +120,14 @@ export default function CallHistoryScreen({ onBack, onCall }: CallHistoryScreenP
                     <button 
                       onClick={() => onCall(call.chatId, call.type)}
                       className="p-2 text-primary hover:bg-primary/10 rounded-full transition-colors"
+                      style={{ touchAction: 'manipulation' }}
                     >
                       {call.type === 'video' ? <Video className="w-5 h-5" /> : <Phone className="w-5 h-5" />}
                     </button>
                     <button 
                       onClick={() => handleDelete(call.id)}
                       className="p-2 text-red-400 hover:bg-red-50 rounded-full transition-colors"
+                      style={{ touchAction: 'manipulation' }}
                     >
                       <Trash2 className="w-5 h-5" />
                     </button>

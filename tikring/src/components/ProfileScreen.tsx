@@ -460,7 +460,7 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
       className="absolute inset-0 bg-white z-20 flex flex-col"
     >
       <header className="flex items-center gap-4 px-4 py-3 border-b border-gray-100">
-        <button onClick={() => setActiveSubPage('notifications')}>
+        <button onClick={() => setActiveSubPage('notifications')} style={{ touchAction: 'manipulation' }}>
           <ArrowLeft className="w-6 h-6 text-primary" />
         </button>
         <h2 className="text-lg font-bold text-text-primary">Call Tones</h2>
@@ -506,6 +506,7 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
                   "w-full flex items-center gap-4 p-4 rounded-2xl transition-all",
                   callTone.id === tone.id ? "bg-primary/10 border-primary" : "bg-surface hover:bg-gray-100"
                 )}
+                style={{ touchAction: 'manipulation' }}
               >
                 <div className={cn(
                   "w-10 h-10 rounded-full flex items-center justify-center",
@@ -550,7 +551,7 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
       className="absolute inset-0 bg-white z-20 flex flex-col"
     >
       <header className="flex items-center gap-4 px-4 py-3 border-b border-gray-100">
-        <button onClick={() => setActiveSubPage('main')}>
+        <button onClick={() => setActiveSubPage('main')} style={{ touchAction: 'manipulation' }}>
           <ArrowLeft className="w-6 h-6 text-primary" />
         </button>
         <h2 className="text-lg font-bold text-text-primary">Notifications</h2>
@@ -567,6 +568,7 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
               "w-12 h-6 rounded-full transition-colors relative",
               notificationSettings.showNotifications ? "bg-primary" : "bg-gray-200"
             )}
+            style={{ touchAction: 'manipulation' }}
           >
             <div className={cn(
               "absolute top-1 w-4 h-4 bg-white rounded-full transition-all",
@@ -586,6 +588,7 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
               "w-12 h-6 rounded-full transition-colors relative",
               notificationSettings.sound ? "bg-primary" : "bg-gray-200"
             )}
+            style={{ touchAction: 'manipulation' }}
           >
             <div className={cn(
               "absolute top-1 w-4 h-4 bg-white rounded-full transition-all",
@@ -605,6 +608,7 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
               "w-12 h-6 rounded-full transition-colors relative",
               notificationSettings.vibration ? "bg-primary" : "bg-gray-200"
             )}
+            style={{ touchAction: 'manipulation' }}
           >
             <div className={cn(
               "absolute top-1 w-4 h-4 bg-white rounded-full transition-all",
@@ -624,6 +628,7 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
               "w-12 h-6 rounded-full transition-colors relative",
               notificationSettings.previewMessage ? "bg-primary" : "bg-gray-200"
             )}
+            style={{ touchAction: 'manipulation' }}
           >
             <div className={cn(
               "absolute top-1 w-4 h-4 bg-white rounded-full transition-all",
@@ -636,6 +641,7 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
           <button 
             onClick={() => setActiveSubPage('call-tones')}
             className="w-full flex items-center justify-between p-4 bg-surface rounded-2xl hover:bg-gray-100 transition-colors"
+            style={{ touchAction: 'manipulation' }}
           >
             <div className="flex items-center gap-4">
               <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center text-primary">
@@ -667,7 +673,7 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
           setTempPIN('');
           setConfirmPIN('');
           setPinError('');
-        }}>
+        }} style={{ touchAction: 'manipulation' }}>
           <ArrowLeft className="w-6 h-6 text-primary" />
         </button>
         <h2 className="text-lg font-bold text-text-primary">Two-Step Verification</h2>
@@ -699,6 +705,7 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
                   disabled={tempPIN.length < 4}
                   onClick={() => setPinStep('confirm')}
                   className="w-full bg-primary text-white font-bold py-3 rounded-2xl shadow-lg disabled:opacity-50"
+                  style={{ touchAction: 'manipulation' }}
                 >
                   Next
                 </button>
@@ -719,6 +726,7 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
                   <button 
                     onClick={() => { setPinStep('enter'); setConfirmPIN(''); }}
                     className="flex-1 bg-surface text-text-primary font-bold py-3 rounded-2xl"
+                    style={{ touchAction: 'manipulation' }}
                   >
                     Back
                   </button>
@@ -730,11 +738,13 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
                         setPinStep('enter');
                         setTempPIN('');
                         setConfirmPIN('');
+                        setPinError('');
                       } else {
                         setPinError('PINs do not match. Try again.');
                       }
                     }}
                     className="flex-1 bg-primary text-white font-bold py-3 rounded-2xl shadow-lg disabled:opacity-50"
+                    style={{ touchAction: 'manipulation' }}
                   >
                     Enable
                   </button>
@@ -751,6 +761,7 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
             <button 
               onClick={() => setSecuritySettings(prev => ({ ...prev, twoStepEnabled: false, twoStepPIN: '' }))}
               className="w-full bg-red-50 text-red-500 font-bold py-3 rounded-2xl border border-red-100"
+              style={{ touchAction: 'manipulation' }}
             >
               Disable Two-Step Verification
             </button>
@@ -768,7 +779,7 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
       className="absolute inset-0 bg-white z-20 flex flex-col"
     >
       <header className="flex items-center gap-4 px-4 py-3 border-b border-gray-100">
-        <button onClick={() => setActiveSubPage('privacy')}>
+        <button onClick={() => setActiveSubPage('privacy')} style={{ touchAction: 'manipulation' }}>
           <ArrowLeft className="w-6 h-6 text-primary" />
         </button>
         <h2 className="text-lg font-bold text-text-primary">Security Notifications</h2>
@@ -794,6 +805,7 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
               "w-12 h-6 rounded-full transition-colors relative",
               securitySettings.securityNotifications ? "bg-primary" : "bg-gray-200"
             )}
+            style={{ touchAction: 'manipulation' }}
           >
             <div className={cn(
               "absolute top-1 w-4 h-4 bg-white rounded-full transition-all",
@@ -820,7 +832,7 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
       className="absolute inset-0 bg-white z-20 flex flex-col"
     >
       <header className="flex items-center gap-4 px-4 py-3 border-b border-gray-100">
-        <button onClick={() => setActiveSubPage('main')}>
+        <button onClick={() => setActiveSubPage('main')} style={{ touchAction: 'manipulation' }}>
           <ArrowLeft className="w-6 h-6 text-primary" />
         </button>
         <h2 className="text-lg font-bold text-text-primary">Privacy & Security</h2>
@@ -893,6 +905,7 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
                 "w-12 h-6 rounded-full transition-colors relative",
                 privacySettings.readReceipts ? "bg-primary" : "bg-gray-200"
               )}
+              style={{ touchAction: 'manipulation' }}
             >
               <div className={cn(
                 "absolute top-1 w-4 h-4 bg-white rounded-full transition-all",
@@ -907,6 +920,7 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
           <button 
             onClick={() => setActiveSubPage('two-step')}
             className="w-full text-left py-2 border-b border-gray-100 flex items-center justify-between"
+            style={{ touchAction: 'manipulation' }}
           >
             <div className="flex flex-col">
               <span className="font-bold text-text-primary">Two-Step Verification</span>
@@ -917,6 +931,7 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
           <button 
             onClick={() => setActiveSubPage('security-notifications')}
             className="w-full text-left py-2 border-b border-gray-100 flex items-center justify-between"
+            style={{ touchAction: 'manipulation' }}
           >
             <div className="flex flex-col">
               <span className="font-bold text-text-primary">Security Notifications</span>
@@ -934,7 +949,7 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
       {/* Header */}
       <header className="sticky top-0 z-30 flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-white shadow-sm">
         <div className="flex items-center gap-4">
-          <button onClick={onBack}>
+          <button onClick={onBack} style={{ touchAction: 'manipulation' }}>
             <ArrowLeft className="w-6 h-6 text-primary" />
           </button>
           <h2 className="text-lg font-bold text-text-primary">Profile</h2>
@@ -944,6 +959,7 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
             onClick={() => setIsQrModalOpen(true)}
             className="p-2 bg-surface rounded-xl text-text-secondary hover:text-primary transition-colors"
             title="My QR Code"
+            style={{ touchAction: 'manipulation' }}
           >
             <QrCode className="w-5 h-5" />
           </button>
@@ -951,6 +967,7 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
             onClick={handleSave}
             disabled={isSaving}
             className="text-primary font-bold flex items-center gap-1"
+            style={{ touchAction: 'manipulation' }}
           >
             {isSaving ? 'Saving...' : <><Save className="w-5 h-5" /> Save</>}
           </button>
@@ -977,6 +994,7 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
             <button 
               onClick={triggerFileInput}
               className="absolute bottom-0 right-0 bg-primary p-2 rounded-full border-2 border-white shadow-lg text-white"
+              style={{ touchAction: 'manipulation' }}
             >
               <Camera className="w-5 h-5" />
             </button>

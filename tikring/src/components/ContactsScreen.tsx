@@ -335,7 +335,7 @@ export default function ContactsScreen({ onContactSelect, onViewProfile, onBack,
       {/* Header */}
       <header className="sticky top-0 z-30 px-4 py-4 border-b border-gray-100 bg-white shadow-sm">
         <div className="flex justify-between items-center mb-4">
-          <button onClick={onBack} className="p-1">
+          <button onClick={onBack} className="p-1" style={{ touchAction: 'manipulation' }}>
             <ArrowLeft className="w-6 h-6 text-primary" />
           </button>
           <h2 className="text-xl font-bold text-primary">Contacts</h2>
@@ -350,6 +350,7 @@ export default function ContactsScreen({ onContactSelect, onViewProfile, onBack,
               whileTap={{ scale: 0.95 }}
               onClick={() => setIsNewContactModalOpen(true)}
               className="flex-1 flex items-center justify-center gap-2 py-2.5 border-2 border-primary/20 rounded-xl text-primary font-bold text-sm hover:bg-primary/5 transition-colors"
+              style={{ touchAction: 'manipulation' }}
             >
               <UserPlus className="w-4 h-4" />
               New Contact
@@ -358,6 +359,7 @@ export default function ContactsScreen({ onContactSelect, onViewProfile, onBack,
               whileTap={{ scale: 0.95 }}
               onClick={() => setIsQrScannerOpen(true)}
               className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-surface rounded-xl text-primary font-bold text-sm shadow-sm"
+              style={{ touchAction: 'manipulation' }}
             >
               <QrCode className="w-4 h-4" />
               Scan QR
@@ -366,6 +368,7 @@ export default function ContactsScreen({ onContactSelect, onViewProfile, onBack,
               whileTap={{ scale: 0.95 }}
               onClick={() => setIsCreateGroupModalOpen(true)}
               className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-primary rounded-xl text-white font-bold text-sm shadow-lg shadow-primary/20"
+              style={{ touchAction: 'manipulation' }}
             >
               <Users className="w-4 h-4" />
               Create Group
@@ -377,6 +380,7 @@ export default function ContactsScreen({ onContactSelect, onViewProfile, onBack,
             onClick={handleSyncContacts}
             disabled={isSyncing}
             className="w-full mt-3 flex items-center justify-center gap-2 py-2 bg-green-50 text-green-600 rounded-xl font-bold text-xs border border-green-100"
+            style={{ touchAction: 'manipulation' }}
           >
             <RefreshCw className={cn("w-3 h-3", isSyncing && "animate-spin")} />
             {isSyncing ? 'Syncing Phone Contacts...' : 'Sync Contacts from Phone'}
@@ -394,7 +398,7 @@ export default function ContactsScreen({ onContactSelect, onViewProfile, onBack,
             onChange={(e) => setSearchQuery(e.target.value)}
             className="flex-1 bg-transparent border-none focus:outline-none text-sm text-text-primary"
           />
-          <button onClick={() => setViewMode(viewMode === 'list' ? 'grid' : 'list')}>
+          <button onClick={() => setViewMode(viewMode === 'list' ? 'grid' : 'list')} style={{ touchAction: 'manipulation' }}>
             {viewMode === 'list' ? <Grid className="w-4 h-4 text-primary" /> : <List className="w-4 h-4 text-primary" />}
           </button>
         </div>
@@ -453,6 +457,7 @@ export default function ContactsScreen({ onContactSelect, onViewProfile, onBack,
             <button 
               onClick={() => handleScanQr(searchQuery)}
               className="bg-primary text-white px-8 py-3 rounded-2xl font-bold shadow-lg shadow-primary/20 active:scale-95 transition-transform"
+              style={{ touchAction: 'manipulation' }}
             >
               Find User
             </button>
@@ -471,6 +476,7 @@ export default function ContactsScreen({ onContactSelect, onViewProfile, onBack,
             <button 
               onClick={() => setIsNewContactModalOpen(true)}
               className="bg-primary text-white px-6 py-2 rounded-xl font-bold text-sm shadow-lg shadow-primary/20"
+              style={{ touchAction: 'manipulation' }}
             >
               Add Contact
             </button>
@@ -551,6 +557,7 @@ export default function ContactsScreen({ onContactSelect, onViewProfile, onBack,
                           }}
                           className="p-1.5 hover:bg-green-50 text-green-500 rounded-lg transition-colors"
                           title="Unblock"
+                          style={{ touchAction: 'manipulation' }}
                         >
                           <Check className="w-3.5 h-3.5" />
                         </button>
@@ -562,6 +569,7 @@ export default function ContactsScreen({ onContactSelect, onViewProfile, onBack,
                           }}
                           className="p-1.5 hover:bg-red-50 text-text-secondary hover:text-red-500 rounded-lg transition-colors"
                           title="Block"
+                          style={{ touchAction: 'manipulation' }}
                         >
                           <ShieldAlert className="w-3.5 h-3.5" />
                         </button>
@@ -573,6 +581,7 @@ export default function ContactsScreen({ onContactSelect, onViewProfile, onBack,
                         }}
                         className="p-1.5 hover:bg-red-50 text-text-secondary hover:text-red-500 rounded-lg transition-colors"
                         title="Delete"
+                        style={{ touchAction: 'manipulation' }}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -629,12 +638,14 @@ export default function ContactsScreen({ onContactSelect, onViewProfile, onBack,
                     "flex-1 py-3 rounded-xl font-bold text-white shadow-lg",
                     confirmModal.type === 'unblock' ? "bg-green-500 shadow-green-500/20" : "bg-red-500 shadow-red-500/20"
                   )}
+                  style={{ touchAction: 'manipulation' }}
                 >
                   Confirm
                 </button>
                 <button 
                   onClick={() => setConfirmModal({ ...confirmModal, isOpen: false })}
                   className="flex-1 bg-surface py-3 rounded-xl font-bold text-text-secondary"
+                  style={{ touchAction: 'manipulation' }}
                 >
                   Cancel
                 </button>
@@ -660,10 +671,11 @@ export default function ContactsScreen({ onContactSelect, onViewProfile, onBack,
                   onClick={() => setCameraFacingMode(prev => prev === 'user' ? 'environment' : 'user')}
                   className="p-2 bg-white/10 rounded-full hover:bg-white/20 transition-colors"
                   title="Switch Camera"
+                  style={{ touchAction: 'manipulation' }}
                 >
                   <RotateCcw className="w-5 h-5" />
                 </button>
-                <button onClick={handleCloseScanner}><X className="w-6 h-6" /></button>
+                <button onClick={handleCloseScanner} style={{ touchAction: 'manipulation' }}><X className="w-6 h-6" /></button>
               </div>
             </div>
             
@@ -682,6 +694,7 @@ export default function ContactsScreen({ onContactSelect, onViewProfile, onBack,
               <button 
                 onClick={() => handleScanQr('tikring-user:+8801728842220')}
                 className="bg-white text-primary px-8 py-3 rounded-2xl font-bold shadow-xl active:scale-95 transition-transform"
+                style={{ touchAction: 'manipulation' }}
               >
                 Simulate Scan
               </button>
@@ -722,6 +735,7 @@ export default function ContactsScreen({ onContactSelect, onViewProfile, onBack,
                 <button 
                   onClick={() => handleSendRequest(scannedUser)}
                   className="flex-1 bg-primary py-3 rounded-xl font-bold text-white shadow-lg shadow-primary/20 flex items-center justify-center gap-2"
+                  style={{ touchAction: 'manipulation' }}
                 >
                   <UserPlus2 className="w-4 h-4" />
                   Send Request
@@ -729,6 +743,7 @@ export default function ContactsScreen({ onContactSelect, onViewProfile, onBack,
                 <button 
                   onClick={() => setScannedUser(null)}
                   className="flex-1 bg-surface py-3 rounded-xl font-bold text-text-secondary"
+                  style={{ touchAction: 'manipulation' }}
                 >
                   Cancel
                 </button>
@@ -750,7 +765,7 @@ export default function ContactsScreen({ onContactSelect, onViewProfile, onBack,
             <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl">
               <div className="p-4 border-b border-gray-100 flex justify-between items-center">
                 <h3 className="font-bold text-primary">Add New Contact</h3>
-                <button onClick={() => setIsNewContactModalOpen(false)}><X className="w-5 h-5 text-text-secondary" /></button>
+                <button onClick={() => setIsNewContactModalOpen(false)} style={{ touchAction: 'manipulation' }}><X className="w-5 h-5 text-text-secondary" /></button>
               </div>
               <div className="p-6 space-y-4">
                 <div className="space-y-1">

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Mic, MicOff, Video, VideoOff, PhoneOff, Volume2, Repeat, Monitor, MonitorOff, Camera, Ghost, Sparkles, X, Compass, LayoutGrid } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, PhoneOff, Phone, Volume2, Repeat, Monitor, MonitorOff, Camera, Ghost, Sparkles, X, Compass, LayoutGrid } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/src/lib/utils';
 
@@ -14,6 +14,7 @@ interface VideoCallProps {
   onToggleScreenShare?: (isSharing: boolean) => Promise<{ success: boolean; error?: string }>;
   localVideoRef?: React.RefObject<HTMLVideoElement | null>;
   remoteVideoRef?: React.RefObject<HTMLVideoElement | null>;
+  callConnected?: boolean;
 }
 
 export default function VideoCall({ 
@@ -26,7 +27,8 @@ export default function VideoCall({
   onSwitchCamera,
   onToggleScreenShare,
   localVideoRef: externalLocalVideoRef,
-  remoteVideoRef: externalRemoteVideoRef
+  remoteVideoRef: externalRemoteVideoRef,
+  callConnected
 }: VideoCallProps) {
   const internalLocalVideoRef = useRef<HTMLVideoElement>(null);
   const internalRemoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -169,6 +171,43 @@ export default function VideoCall({
     }
   };
 
+  if (isIncoming) {
+    return (
+      <div className="fixed inset-0 bg-white z-[100] flex flex-col items-center justify-center gap-12 px-6 font-sans">
+        <div className="flex flex-col items-center gap-6">
+          <div className="w-24 h-24 rounded-full bg-[#F0F0FF] flex items-center justify-center shadow-sm">
+            <Video className="w-12 h-12 text-[#5B51D8]" />
+          </div>
+          <h2 className="text-2xl font-bold text-[#1A1C2E] text-center">Incoming Call from {callerName}</h2>
+        </div>
+
+        <div className="flex gap-12">
+          <button 
+            onClick={onEndCall}
+            className="flex flex-col items-center gap-3"
+            style={{ touchAction: 'manipulation' }}
+          >
+            <div className="w-16 h-16 rounded-full bg-[#FF4B4B] flex items-center justify-center text-white shadow-lg active:scale-90 transition-transform">
+              <PhoneOff className="w-8 h-8" />
+            </div>
+            <span className="text-sm font-bold text-[#FF4B4B]">Decline</span>
+          </button>
+
+          <button 
+            onClick={onAccept}
+            className="flex flex-col items-center gap-3"
+            style={{ touchAction: 'manipulation' }}
+          >
+            <div className="w-16 h-16 rounded-full bg-[#4CAF50] flex items-center justify-center text-white shadow-lg active:scale-90 transition-transform">
+              <Phone className="w-8 h-8" />
+            </div>
+            <span className="text-sm font-bold text-[#4CAF50]">Accept</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 bg-black z-50 flex flex-col overflow-hidden">
       {/* Error Message */}
@@ -208,6 +247,7 @@ export default function VideoCall({
             <button 
               onClick={toggleScreenShare}
               className="px-8 py-3 bg-red-500 text-white font-bold rounded-2xl shadow-lg shadow-red-500/20 active:scale-95 transition-transform"
+              style={{ touchAction: 'manipulation' }}
             >
               Stop Sharing
             </button>
@@ -232,7 +272,7 @@ export default function VideoCall({
             <div className="w-32 h-32 rounded-full bg-gray-800 flex items-center justify-center">
               <span className="text-4xl text-white font-bold">{callerName[0]}</span>
             </div>
-            <p className="text-white text-xl font-medium">{isIncoming ? 'Incoming Video Call...' : 'Calling...'}</p>
+            <p className="text-white text-xl font-medium">{isIncoming ? 'Incoming Video Call' : 'Outgoing Video Call'}</p>
           </div>
         )}
       </div>
@@ -324,6 +364,7 @@ export default function VideoCall({
               "p-2.5 sm:p-3 rounded-full transition-colors",
               isMuted ? "bg-white text-black" : "bg-white/20 text-white"
             )}
+            style={{ touchAction: 'manipulation' }}
           >
             {isMuted ? <MicOff className="w-4 h-4 sm:w-5 sm:h-5" /> : <Mic className="w-4 h-4 sm:w-5 sm:h-5" />}
           </button>
@@ -334,6 +375,7 @@ export default function VideoCall({
               "p-2.5 sm:p-3 rounded-full transition-colors",
               isVideoOff ? "bg-white text-black" : "bg-white/20 text-white"
             )}
+            style={{ touchAction: 'manipulation' }}
           >
             {isVideoOff ? <VideoOff className="w-4 h-4 sm:w-5 sm:h-5" /> : <Video className="w-4 h-4 sm:w-5 sm:h-5" />}
           </button>
@@ -346,6 +388,7 @@ export default function VideoCall({
                 virtualBackground !== 'none' ? "bg-white text-black" : "bg-white/20 text-white"
               )}
               title="Virtual Backgrounds"
+              style={{ touchAction: 'manipulation' }}
             >
               <Sparkles className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
@@ -372,6 +415,7 @@ export default function VideoCall({
                         "flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-colors",
                         virtualBackground === bg.id ? "bg-primary text-white" : "text-white/70 hover:bg-white/10"
                       )}
+                      style={{ touchAction: 'manipulation' }}
                     >
                       {bg.icon}
                       {bg.label}
@@ -393,6 +437,7 @@ export default function VideoCall({
                 (isScreenSharing || showToolsMenu) ? "bg-white text-black" : "bg-white/20 text-white"
               )}
               title="Tools"
+              style={{ touchAction: 'manipulation' }}
             >
               <LayoutGrid className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
@@ -414,6 +459,7 @@ export default function VideoCall({
                       "flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-colors",
                       isScreenSharing ? "bg-primary text-white" : "text-white/70 hover:bg-white/10"
                     )}
+                    style={{ touchAction: 'manipulation' }}
                   >
                     {isScreenSharing ? <MonitorOff className="w-4 h-4" /> : <Monitor className="w-4 h-4" />}
                     {isScreenSharing ? 'Stop Sharing' : 'Screen Share'}
@@ -425,6 +471,7 @@ export default function VideoCall({
                       setShowToolsMenu(false);
                     }}
                     className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-white/70 hover:bg-white/10 transition-colors"
+                    style={{ touchAction: 'manipulation' }}
                   >
                     <Camera className="w-4 h-4" />
                     Screenshot
@@ -436,6 +483,7 @@ export default function VideoCall({
                       setShowToolsMenu(false);
                     }}
                     className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-white/70 hover:bg-white/10 transition-colors"
+                    style={{ touchAction: 'manipulation' }}
                   >
                     <Repeat className="w-4 h-4" />
                     Switch Camera
@@ -456,6 +504,7 @@ export default function VideoCall({
                       "flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-colors",
                       isSelfTest ? "bg-primary text-white" : "text-white/70 hover:bg-white/10"
                     )}
+                    style={{ touchAction: 'manipulation' }}
                   >
                     <Volume2 className="w-4 h-4" />
                     {isSelfTest ? 'Stop Self Test' : 'Self Test Call'}
@@ -468,6 +517,7 @@ export default function VideoCall({
           <button 
             onClick={onEndCall}
             className="p-2.5 sm:p-3 rounded-full bg-red-500 text-white hover:bg-red-600 transition-colors"
+            style={{ touchAction: 'manipulation' }}
           >
             <PhoneOff className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
@@ -483,47 +533,6 @@ export default function VideoCall({
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-white z-[100] pointer-events-none"
           />
-        )}
-      </AnimatePresence>
-
-      {/* Incoming Call Actions */}
-      <AnimatePresence>
-        {isIncoming && (
-          <motion.div 
-            initial={{ y: 100, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 100, opacity: 0 }}
-            className="absolute bottom-0 left-0 right-0 bg-white rounded-t-[30px] sm:rounded-t-[40px] p-6 sm:p-10 flex flex-col items-center gap-6 sm:gap-8 z-50 shadow-2xl"
-          >
-            <div className="flex flex-col items-center gap-2">
-              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-primary/10 flex items-center justify-center">
-                <Video className="w-8 h-8 sm:w-10 sm:h-10 text-primary" />
-              </div>
-              <h3 className="text-lg sm:text-xl font-bold text-text-primary text-center">Incoming Call from {callerName}</h3>
-            </div>
-            
-            <div className="flex gap-8 sm:gap-12">
-              <button 
-                onClick={onEndCall}
-                className="flex flex-col items-center gap-2"
-              >
-                <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-red-500 flex items-center justify-center text-white shadow-lg active:scale-90 transition-transform">
-                  <PhoneOff className="w-6 h-6 sm:w-8 sm:h-8" />
-                </div>
-                <span className="text-xs sm:text-sm font-bold text-red-500">Decline</span>
-              </button>
-
-              <button 
-                onClick={onAccept}
-                className="flex flex-col items-center gap-2"
-              >
-                <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-online flex items-center justify-center text-white shadow-lg active:scale-90 transition-transform">
-                  <Video className="w-6 h-6 sm:w-8 sm:h-8" />
-                </div>
-                <span className="text-xs sm:text-sm font-bold text-online">Accept</span>
-              </button>
-            </div>
-          </motion.div>
         )}
       </AnimatePresence>
     </div>

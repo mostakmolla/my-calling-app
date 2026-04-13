@@ -217,7 +217,7 @@ export default function HomeScreen({
     <div className="flex flex-col h-full bg-white relative overflow-hidden">
       {/* Top App Bar */}
       <header className="sticky top-0 z-30 flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-white shadow-sm">
-        <button className="p-1" onClick={onProfileOpen}>
+        <button className="p-1" onClick={onProfileOpen} style={{ touchAction: 'manipulation' }}>
           <Menu className="w-6 h-6 text-primary" />
         </button>
         <div className="flex flex-col items-center cursor-pointer group" onClick={onProfileOpen}>
@@ -243,7 +243,7 @@ export default function HomeScreen({
             )}
           </div>
         </div>
-        <button className="p-1">
+        <button className="p-1" style={{ touchAction: 'manipulation' }}>
           <Search className="w-6 h-6 text-primary" />
         </button>
       </header>
@@ -255,6 +255,7 @@ export default function HomeScreen({
             <button 
               onClick={onCreateGroup}
               className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center border-2 border-dashed border-primary/30 transition-transform active:scale-90"
+              style={{ touchAction: 'manipulation' }}
             >
               <Users className="w-6 h-6 text-primary" />
             </button>
@@ -275,6 +276,7 @@ export default function HomeScreen({
             <div 
               className="relative cursor-pointer" 
               onClick={() => handleGlobalUserClick(user)}
+              style={{ touchAction: 'manipulation' }}
             >
               <div className="w-14 h-14 rounded-full p-[2px] bg-gradient-to-tr from-green-400 to-blue-500">
                 <img 
@@ -296,7 +298,7 @@ export default function HomeScreen({
               <div className={cn(
                 "w-14 h-14 rounded-full p-0.5 border-2 cursor-pointer transition-transform active:scale-90",
                 (story.unread || (story.isMe && story.hasStory)) ? "border-primary" : "border-gray-200"
-              )} onClick={() => handleStoryClick(story)}>
+              )} onClick={() => handleStoryClick(story)} style={{ touchAction: 'manipulation' }}>
                 <img 
                   src={story.avatar} 
                   alt={story.name} 
@@ -312,6 +314,7 @@ export default function HomeScreen({
                   }}
                   className="absolute bottom-0 right-0 bg-primary text-white rounded-full p-1 border-2 border-white shadow-lg transition-transform active:scale-75"
                   title="Fast Story"
+                  style={{ touchAction: 'manipulation' }}
                 >
                   <Plus className="w-3 h-3" />
                 </button>
@@ -341,6 +344,7 @@ export default function HomeScreen({
                 onClick={onReconnect}
                 disabled={isConnecting}
                 className="px-6 py-2 bg-primary text-white rounded-full font-bold shadow-lg active:scale-95 transition-transform disabled:opacity-50"
+                style={{ touchAction: 'manipulation' }}
               >
                 {isConnecting ? 'Connecting...' : 'Try Reconnect'}
               </button>
@@ -351,6 +355,7 @@ export default function HomeScreen({
             key={`chat-list-${chat.id}`}
             onClick={() => onChatSelect(chat.id)}
             className="flex items-center px-4 py-3 hover:bg-surface transition-colors cursor-pointer border-b border-gray-50 last:border-0"
+            style={{ touchAction: 'manipulation' }}
           >
             <div className="relative flex-shrink-0">
               <img 
@@ -452,12 +457,14 @@ export default function HomeScreen({
                   <button 
                     onClick={() => setIsMuted(!isMuted)} 
                     className="p-2 bg-black/40 hover:bg-black/60 rounded-full backdrop-blur-md transition-colors border border-white/20"
+                    style={{ touchAction: 'manipulation' }}
                   >
                     {isMuted ? <VolumeX className="w-5 h-5 text-white" /> : <Volume2 className="w-5 h-5 text-white" />}
                   </button>
                   <button 
                     onClick={() => setIsPaused(!isPaused)} 
                     className="p-2 bg-black/40 hover:bg-black/60 rounded-full backdrop-blur-md transition-colors border border-white/20"
+                    style={{ touchAction: 'manipulation' }}
                   >
                     {isPaused ? <Play className="w-5 h-5 text-white fill-white" /> : <Pause className="w-5 h-5 text-white fill-white" />}
                   </button>
@@ -467,6 +474,7 @@ export default function HomeScreen({
                       setIsPaused(false);
                     }} 
                     className="flex items-center gap-2 px-4 py-2 bg-black/40 hover:bg-black/60 rounded-full backdrop-blur-md transition-colors border border-white/20"
+                    style={{ touchAction: 'manipulation' }}
                   >
                     <span className="text-white text-xs font-bold">Close</span>
                     <X className="w-5 h-5 text-white" />
@@ -500,6 +508,7 @@ export default function HomeScreen({
                   setIsPaused(!isPaused);
                 }
               }}
+              style={{ touchAction: 'manipulation' }}
             >
               <audio 
                 key={`story-audio-${currentStoryIndex}`}
@@ -561,6 +570,7 @@ export default function HomeScreen({
                         ? "border-primary scale-110 ring-4 ring-primary/20 z-20" 
                         : "border-white/30 opacity-60 hover:opacity-100 hover:scale-105 z-10"
                     )}
+                    style={{ touchAction: 'manipulation' }}
                   >
                     <img src={item.image} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                     {item.music && (
@@ -590,7 +600,7 @@ export default function HomeScreen({
                 placeholder="Reply to story..." 
                 className="flex-1 bg-white/10 border border-white/20 rounded-full px-6 py-3 text-white placeholder:text-white/50 focus:outline-none backdrop-blur-md"
               />
-              <button className="p-3 bg-primary rounded-full text-white shadow-lg">
+              <button className="p-3 bg-primary rounded-full text-white shadow-lg" style={{ touchAction: 'manipulation' }}>
                 <MessageSquare className="w-6 h-6" />
               </button>
             </div>
@@ -610,7 +620,7 @@ export default function HomeScreen({
             <div className="bg-white rounded-3xl w-full max-w-xs overflow-hidden">
               <div className="p-4 border-b border-gray-100 flex justify-between items-center">
                 <h3 className="font-bold text-text-primary">Update Story</h3>
-                <button onClick={() => setIsStoryModalOpen(false)}><X className="w-5 h-5 text-text-secondary" /></button>
+                <button onClick={() => setIsStoryModalOpen(false)} style={{ touchAction: 'manipulation' }}><X className="w-5 h-5 text-text-secondary" /></button>
               </div>
               <div className="p-6 flex flex-col items-center gap-6">
                 {Array.isArray(myStory) && myStory.length > 0 ? (
@@ -632,6 +642,7 @@ export default function HomeScreen({
                 <button 
                   onClick={handleAddStory}
                   className="w-full bg-primary text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-md"
+                  style={{ touchAction: 'manipulation' }}
                 >
                   <Upload className="w-5 h-5" />
                   {Array.isArray(myStory) && myStory.length > 0 ? 'Add Another Story' : 'Add New Story'}

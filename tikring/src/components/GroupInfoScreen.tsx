@@ -92,13 +92,13 @@ export default function GroupInfoScreen({ groupId, onBack, onGroupDeleted, socke
       {/* Header */}
       <header className="sticky top-0 z-30 flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-white shadow-sm">
         <div className="flex items-center gap-3">
-          <button onClick={onBack}>
+          <button onClick={onBack} style={{ touchAction: 'manipulation' }}>
             <ArrowLeft className="w-6 h-6 text-primary" />
           </button>
           <h3 className="text-sm font-bold text-text-primary">Group Info</h3>
         </div>
         {isAdmin && (
-          <button onClick={handleDeleteGroup} className="text-red-500">
+          <button onClick={handleDeleteGroup} className="text-red-500" style={{ touchAction: 'manipulation' }}>
             <Trash2 className="w-5 h-5" />
           </button>
         )}
@@ -114,7 +114,7 @@ export default function GroupInfoScreen({ groupId, onBack, onGroupDeleted, socke
               referrerPolicy="no-referrer"
             />
             {isAdmin && (
-              <button className="absolute bottom-0 right-0 bg-primary text-white p-2 rounded-full border-4 border-white shadow-lg">
+              <button className="absolute bottom-0 right-0 bg-primary text-white p-2 rounded-full border-4 border-white shadow-lg" style={{ touchAction: 'manipulation' }}>
                 <Camera className="w-4 h-4" />
               </button>
             )}
@@ -136,6 +136,7 @@ export default function GroupInfoScreen({ groupId, onBack, onGroupDeleted, socke
               <button 
                 onClick={() => setShowAddMember(true)}
                 className="flex items-center gap-1 text-primary text-xs font-bold"
+                style={{ touchAction: 'manipulation' }}
               >
                 <UserPlus className="w-4 h-4" />
                 Add Member
@@ -163,14 +164,14 @@ export default function GroupInfoScreen({ groupId, onBack, onGroupDeleted, socke
                       {isMemberAdmin && <span className="text-[10px] font-bold text-primary">Admin</span>}
                     </div>
                   </div>
-                  
-                  {isAdmin && !isMe && (
+                                    {isAdmin && !isMe && (
                     <div className="flex items-center gap-1 opacity-0 group-hover/item:opacity-100 transition-opacity">
                       {!isMemberAdmin && (
                         <button 
                           onClick={() => handlePromoteToAdmin(phone)}
                           className="text-primary p-2 hover:bg-primary/10 rounded-full transition-colors"
                           title="Promote to Admin"
+                          style={{ touchAction: 'manipulation' }}
                         >
                           <Users className="w-4 h-4" />
                         </button>
@@ -179,6 +180,7 @@ export default function GroupInfoScreen({ groupId, onBack, onGroupDeleted, socke
                         onClick={() => handleRemoveMember(phone)}
                         className="text-red-400 p-2 hover:bg-red-50 rounded-full transition-colors"
                         title="Remove from Group"
+                        style={{ touchAction: 'manipulation' }}
                       >
                         <UserMinus className="w-4 h-4" />
                       </button>
@@ -208,7 +210,7 @@ export default function GroupInfoScreen({ groupId, onBack, onGroupDeleted, socke
             >
               <div className="p-4 border-b border-gray-100 flex justify-between items-center">
                 <h3 className="font-bold text-text-primary">Add Member</h3>
-                <button onClick={() => setShowAddMember(false)}><X className="w-5 h-5 text-text-secondary" /></button>
+                <button onClick={() => setShowAddMember(false)} style={{ touchAction: 'manipulation' }}><X className="w-5 h-5 text-text-secondary" /></button>
               </div>
               <div className="overflow-y-auto p-4 space-y-2">
                 {allContacts.filter(c => !group.members.includes(c.phone || '')).map(contact => (

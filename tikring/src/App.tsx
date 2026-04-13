@@ -57,7 +57,8 @@ function AudioCall({
   isMuted,
   setIsMuted,
   isSpeakerOn,
-  setIsSpeakerOn
+  setIsSpeakerOn,
+  callConnected
 }: any) {
   const [showKeypad, setShowKeypad] = useState(false);
   const [showAddCall, setShowAddCall] = useState(false);
@@ -85,7 +86,7 @@ function AudioCall({
              )}
           </div>
           <h2 className="text-2xl font-bold text-text-primary">{callerName}</h2>
-          <p className="text-text-secondary font-medium animate-pulse">Audio Call</p>
+          <p className="text-text-secondary font-medium animate-pulse uppercase tracking-widest text-xs">Incoming Audio Call</p>
         </div>
 
         <div className="flex gap-16">
@@ -106,7 +107,7 @@ function AudioCall({
             style={{ touchAction: 'manipulation' }}
           >
             <div className="w-16 h-16 rounded-full bg-online flex items-center justify-center text-white shadow-lg shadow-online/30 group-active:scale-90 transition-transform">
-              <Check className="w-8 h-8" />
+              <Phone className="w-8 h-8" />
             </div>
             <span className="text-sm font-bold text-online uppercase tracking-wider">Accept</span>
           </button>
@@ -120,9 +121,16 @@ function AudioCall({
       {/* Top Info */}
       <div className="flex flex-col items-center gap-2">
         <h2 className="text-xl font-bold text-text-primary">{callerName}</h2>
-        <p className="text-text-secondary font-mono text-lg font-bold">
-          {formatTime(callDuration)}
-        </p>
+        <div className="flex flex-col items-center">
+          <p className="text-text-secondary font-mono text-lg font-bold">
+            {callConnected ? formatTime(callDuration) : "..."}
+          </p>
+          {!callConnected && (
+            <p className="text-primary text-[10px] font-black uppercase tracking-[0.2em] animate-pulse mt-1">
+              Outgoing Audio Call
+            </p>
+          )}
+        </div>
       </div>
 
       {/* Middle Avatar */}
@@ -200,7 +208,7 @@ function AudioCall({
             className="absolute inset-0 bg-white z-[110] flex flex-col p-8"
           >
             <div className="flex justify-end mb-8">
-              <button onClick={() => setShowKeypad(false)} className="p-2 bg-surface rounded-full">
+              <button onClick={() => setShowKeypad(false)} className="p-2 bg-surface rounded-full" style={{ touchAction: 'manipulation' }}>
                 <X className="w-6 h-6 text-text-secondary" />
               </button>
             </div>
@@ -239,6 +247,7 @@ function AudioCall({
               <button 
                 onClick={() => setShowAddCall(false)}
                 className="w-full py-4 bg-primary text-white font-bold rounded-2xl active:scale-95 transition-transform"
+                style={{ touchAction: 'manipulation' }}
               >
                 Got it
               </button>
@@ -329,6 +338,10 @@ export default function App() {
   }, [isIncomingCall]);
 
   useEffect(() => {
+    console.log('🔄 callType state changed to:', callType);
+  }, [callType]);
+
+  useEffect(() => {
     const setup = async () => {
       await initDB();
       let profile = await getProfile();
@@ -394,11 +407,34 @@ export default function App() {
         });
       });
 
-      newSocket.on('offer', async ({ from, offer, type, callType: incomingCallType }) => {
-        const typeOfCall = incomingCallType || type || 'video';
-        console.log('📞 Incoming offer from:', from, 'Type:', typeOfCall);
+      newSocket.on('offer', async (payload) => {
+        const { from, offer, callType: incomingCallType, type } = payload;
+        const typeOfCall = (incomingCallType === 'audio' || type === 'audio') ? 'audio' : 'video';
+        console.log('📞 Incoming offer from:', from, 'Resolved Type:', typeOfCall, 'Payload:', payload);
         
-        // If we are already in a call or processing one, ignore
+        // If we are already in a call and it's from the same person, handle as re-offer
+        const isReOffer = peerConnectionRef.current && 
+                         (peerConnectionRef.current.signalingState === 'stable' || peerConnectionRef.current.signalingState === 'have-local-offer') &&
+                         callerId === from;
+
+        if (isReOffer) {
+          console.log('🔄 Handling re-offer (e.g. switching to video)');
+          try {
+            setCallType(typeOfCall);
+            await peerConnectionRef.current?.setRemoteDescription(new RTCSessionDescription(offer));
+            const answer = await peerConnectionRef.current?.createAnswer();
+            if (answer) {
+              await peerConnectionRef.current?.setLocalDescription(answer);
+              newSocket.emit('answer', { to: from, answer, callType: typeOfCall });
+            }
+            return;
+          } catch (err) {
+            console.error('Error handling re-offer:', err);
+            return;
+          }
+        }
+
+        // If we are already in a call with someone else, ignore
         if (peerConnectionRef.current && peerConnectionRef.current.signalingState !== 'stable') {
           console.warn('⚠️ Ignoring incoming offer: signaling already in progress');
           return;
@@ -411,7 +447,7 @@ export default function App() {
         try {
           setCallerId(from);
           setIsIncomingCall(true);
-          setCallType(typeOfCall);
+          setCallType(typeOfCall as 'video' | 'audio');
 
           const chat = await getChat(from);
           if (chat) {
@@ -569,8 +605,14 @@ export default function App() {
         }
       });
       
-      newSocket.on('delete_message', async (data: { messageId: string, chatId: string }) => {
-        await deleteMessage(data.messageId);
+      newSocket.on('delete_message', async (data: { messageId: string, from: string }) => {
+        console.log('🗑️ App-level delete_message received:', data);
+        try {
+          await deleteMessage(data.messageId);
+          console.log('🗑️ Message deleted from local DB:', data.messageId);
+        } catch (err) {
+          console.error('🗑️ Error deleting message from DB:', err);
+        }
       });
 
       return () => {
@@ -581,7 +623,16 @@ export default function App() {
     setup();
   }, []);
 
-  const startCall = async (type: 'video' | 'audio', targetId?: string) => {
+  const stopAllStreams = () => {
+    if (localStream) {
+      localStream.getTracks().forEach(track => {
+        track.stop();
+      });
+    }
+    setLocalStream(null);
+  };
+
+  const startCall = async (callTypeToStart: 'video' | 'audio', targetId?: string) => {
     try {
       const id = targetId || selectedChatId;
       if (!id) return;
@@ -589,15 +640,19 @@ export default function App() {
       const chat = await getChat(id);
       const targetPhone = chat?.phone || id; // Use phone if available, fallback to id
 
+      console.log(`🚀 Starting ${callTypeToStart} call to ${targetPhone}`);
       setSelectedChatId(id);
       setSelectedChatName(chat?.name || "User");
       setSelectedChatAvatar(chat?.avatar || "");
-      setCallType(type);
+      setCallType(callTypeToStart);
       setCallStartTime(Date.now());
+
+      // Stop any existing streams first
+      stopAllStreams();
 
       // 1. Get local stream with correct constraints
       let stream;
-      if (type === 'audio') {
+      if (callTypeToStart === 'audio') {
         stream = await navigator.mediaDevices.getUserMedia({
           audio: {
             echoCancellation: true,
@@ -605,6 +660,12 @@ export default function App() {
             autoGainControl: true
           },
           video: false
+        });
+        
+        // Double check - kill any video track if somehow added
+        stream.getVideoTracks().forEach(track => {
+          track.stop();
+          stream.removeTrack(track);
         });
       } else {
         stream = await navigator.mediaDevices.getUserMedia({
@@ -637,6 +698,12 @@ export default function App() {
       // 3. Add tracks BEFORE creating offer - check for duplicates
       const senders = pc.getSenders();
       stream.getTracks().forEach(track => {
+        // Strictly no video tracks for audio calls
+        if (callTypeToStart === 'audio' && track.kind === 'video') {
+          track.stop();
+          return;
+        }
+        
         const alreadyAdded = senders.find(s => s.track === track);
         if (!alreadyAdded) {
           pc.addTrack(track, stream);
@@ -649,7 +716,7 @@ export default function App() {
         const stream = event.streams[0] || new MediaStream([event.track]);
         setRemoteStream(stream);
         
-        if (type === 'audio' && remoteAudioRef.current) {
+        if (callTypeToStart === 'audio' && remoteAudioRef.current) {
           remoteAudioRef.current.srcObject = stream;
           remoteAudioRef.current.muted = false;
           remoteAudioRef.current.volume = 1.0;
@@ -669,8 +736,9 @@ export default function App() {
       await pc.setLocalDescription(offer);
       
       if (socket) {
-        socket.emit('join_call', { toPhone: targetPhone, callType: type });
-        socket.emit('offer', { to: targetPhone, offer, type, callType: type });
+        console.log(`📤 Sending offer to ${targetPhone}, type: ${callTypeToStart}`);
+        socket.emit('join_call', { toPhone: targetPhone, callType: callTypeToStart });
+        socket.emit('offer', { to: targetPhone, offer, callType: callTypeToStart });
       }
     } catch (err) {
       console.error('Error starting call:', err);
@@ -681,6 +749,9 @@ export default function App() {
     try {
       setIsIncomingCall(false);
       
+      // Stop any existing streams first
+      stopAllStreams();
+
       let stream;
       if (callType === 'audio') {
         stream = await navigator.mediaDevices.getUserMedia({
@@ -690,6 +761,12 @@ export default function App() {
             autoGainControl: true
           },
           video: false
+        });
+        
+        // Double check - kill any video track
+        stream.getVideoTracks().forEach(track => {
+          track.stop();
+          stream.removeTrack(track);
         });
       } else {
         stream = await navigator.mediaDevices.getUserMedia({
@@ -711,6 +788,12 @@ export default function App() {
       // Add local tracks - check for duplicates
       const senders = pc.getSenders();
       stream.getTracks().forEach(track => {
+        // Strictly no video tracks for audio calls
+        if (callType === 'audio' && track.kind === 'video') {
+          track.stop();
+          return;
+        }
+
         const alreadyAdded = senders.find(s => s.track === track);
         if (!alreadyAdded) {
           pc.addTrack(track, stream);
@@ -751,14 +834,12 @@ export default function App() {
     }
 
     // Cleanup
-    if (localStream) {
-      localStream.getTracks().forEach(track => track.stop());
-    }
+    stopAllStreams();
+    
     if (peerConnectionRef.current) {
       peerConnectionRef.current.close();
       peerConnectionRef.current = null;
     }
-    setLocalStream(null);
     setRemoteStream(null);
     setIsIncomingCall(false);
     setCallStartTime(0);
@@ -780,10 +861,18 @@ export default function App() {
       if (isSharing) {
         newStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
       } else {
-        newStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: cameraFacingMode },
-          audio: true
-        });
+        // Only allow video if we are in a video call
+        if (callType === 'audio') {
+          newStream = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+            video: false
+          });
+        } else {
+          newStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: cameraFacingMode },
+            audio: true
+          });
+        }
       }
 
       const videoTrack = newStream.getVideoTracks()[0];
@@ -809,7 +898,7 @@ export default function App() {
   };
 
   const switchCamera = async () => {
-    if (!localStream) return;
+    if (!localStream || callType === 'audio') return;
     try {
       const newFacingMode = cameraFacingMode === 'user' ? 'environment' : 'user';
       const newStream = await navigator.mediaDevices.getUserMedia({
@@ -839,41 +928,41 @@ export default function App() {
 
   const switchToVideo = async () => {
     try {
-      setCallType('video');
-      const stream = await navigator.mediaDevices.getUserMedia({
+      console.log('📹 Switching to video...');
+      
+      // Get video stream
+      const videoStream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: cameraFacingMode },
-        audio: true
+        audio: false // We already have audio
       });
       
-      if (localStream) {
-        localStream.getTracks().forEach(t => t.stop());
-      }
-      
-      setLocalStream(stream);
+      const videoTrack = videoStream.getVideoTracks()[0];
       
       if (peerConnectionRef.current) {
         const senders = peerConnectionRef.current.getSenders();
-        const videoTrack = stream.getVideoTracks()[0];
-        const audioTrack = stream.getAudioTracks()[0];
-        
         const videoSender = senders.find(s => s.track?.kind === 'video');
-        const audioSender = senders.find(s => s.track?.kind === 'audio');
         
-        if (videoSender && videoTrack) {
+        if (videoSender) {
           await videoSender.replaceTrack(videoTrack);
-        } else if (videoTrack) {
-          peerConnectionRef.current.addTrack(videoTrack, stream);
+        } else {
+          peerConnectionRef.current.addTrack(videoTrack, localStream!);
         }
         
-        if (audioSender && audioTrack) {
-          await audioSender.replaceTrack(audioTrack);
+        // Update local stream to include video
+        if (localStream) {
+          localStream.addTrack(videoTrack);
+        } else {
+          setLocalStream(videoStream);
         }
         
+        setCallType('video');
+        
+        // Re-negotiate
         const offer = await peerConnectionRef.current.createOffer();
         await peerConnectionRef.current.setLocalDescription(offer);
         if (socket && selectedChatId) {
           const chat = await getChat(selectedChatId);
-          socket.emit('offer', { to: chat?.phone || selectedChatId, offer, type: 'video' });
+          socket.emit('offer', { to: chat?.phone || selectedChatId, offer, type: 'video', callType: 'video' });
         }
       }
     } catch (err) {
@@ -1017,6 +1106,7 @@ export default function App() {
                 onToggleScreenShare={toggleScreenShare}
                 localVideoRef={localVideoRef}
                 remoteVideoRef={remoteVideoRef}
+                callConnected={callConnected}
               />
             ) : (
               <AudioCall 
@@ -1037,6 +1127,7 @@ export default function App() {
                 setIsMuted={setIsMuted}
                 isSpeakerOn={isSpeakerOn}
                 setIsSpeakerOn={setIsSpeakerOn}
+                callConnected={callConnected}
               />
             )
           )}
@@ -1073,19 +1164,19 @@ export default function App() {
 
         {currentScreen === 'main' && (
           <nav className="bg-nav-bg flex items-center justify-around py-3 px-6 z-20">
-            <button onClick={() => setActiveTab('chats')} className="flex flex-col items-center gap-1">
+            <button onClick={() => setActiveTab('chats')} className="flex flex-col items-center gap-1" style={{ touchAction: 'manipulation' }}>
               <MessageSquare className={cn("w-6 h-6", activeTab === 'chats' ? "fill-white text-white" : "text-white/70")} />
             </button>
-            <button onClick={() => setActiveTab('calls')} className="flex flex-col items-center gap-1">
+            <button onClick={() => setActiveTab('calls')} className="flex flex-col items-center gap-1" style={{ touchAction: 'manipulation' }}>
               <Phone className={cn("w-6 h-6", activeTab === 'calls' ? "fill-white text-white" : "text-white/70")} />
             </button>
-            <button onClick={() => setActiveTab('explore')} className="flex flex-col items-center gap-1">
+            <button onClick={() => setActiveTab('explore')} className="flex flex-col items-center gap-1" style={{ touchAction: 'manipulation' }}>
               <Compass className={cn("w-6 h-6", activeTab === 'explore' ? "fill-white text-white" : "text-white/70")} />
             </button>
-            <button onClick={() => setActiveTab('contacts')} className="flex flex-col items-center gap-1">
+            <button onClick={() => setActiveTab('contacts')} className="flex flex-col items-center gap-1" style={{ touchAction: 'manipulation' }}>
               <Users className={cn("w-6 h-6", activeTab === 'contacts' ? "fill-white text-white" : "text-white/70")} />
             </button>
-            <button onClick={() => setCurrentScreen('profile')} className="flex flex-col items-center gap-1">
+            <button onClick={() => setCurrentScreen('profile')} className="flex flex-col items-center gap-1" style={{ touchAction: 'manipulation' }}>
               <User className={cn("w-6 h-6", currentScreen === 'profile' ? "fill-white text-white" : "text-white/70")} />
             </button>
           </nav>

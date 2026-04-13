@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Phone, Video, MoreVertical, Smile, Paperclip, Camera, Send, Mic, X, Play, Pause, ExternalLink, MapPin, Volume2, Loader2, Users } from 'lucide-react';
+import { ArrowLeft, Phone, Video, MoreVertical, Smile, Paperclip, Camera, Send, Mic, X, Play, Pause, ExternalLink, MapPin, Volume2, Loader2, Users, Languages } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/src/lib/utils';
 import { Message, saveMessage, getMessages, getChat, Chat, getGroup, Group, markAllMessagesAsRead, updateMessageStatus, deleteMessage } from '@/src/lib/db';
@@ -33,6 +33,7 @@ export default function ChatScreen({ chatId, socket, isConnected, onBack, onCall
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
   const [audioCurrentTime, setAudioCurrentTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
+  const [transcribingId, setTranscribingId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -148,10 +149,18 @@ export default function ChatScreen({ chatId, socket, isConnected, onBack, onCall
       }
     });
 
-    socket.on('message_deleted', async (data: { messageId: string, from: string }) => {
-      if (data.from === chatId) {
-        await deleteMessage(data.messageId);
-        setMessages(prev => prev.filter(msg => msg.id !== data.messageId));
+    socket.on('delete_message', async (data: { messageId: string, from: string }) => {
+      console.log('🗑️ ChatScreen received delete_message:', data, 'Current chatId:', chatId);
+      // Always delete from DB if we receive the event
+      await deleteMessage(data.messageId);
+      
+      // Only update UI if it's for the current chat
+      if (data.from === chatId || !chatId) {
+        setMessages(prev => {
+          const newMessages = prev.filter(msg => msg.id !== data.messageId);
+          console.log(`🗑️ UI Filter: ${prev.length} -> ${newMessages.length} messages`);
+          return newMessages;
+        });
       }
     });
 
@@ -160,6 +169,7 @@ export default function ChatScreen({ chatId, socket, isConnected, onBack, onCall
       socket.off('message_read', handleMessageRead);
       socket.off('typing');
       socket.off('stop_typing');
+      socket.off('delete_message');
     };
   }, [socket, chatId, chat]);
 
@@ -216,8 +226,12 @@ export default function ChatScreen({ chatId, socket, isConnected, onBack, onCall
       setMessages(prev => prev.filter(msg => msg.id !== messageId));
       setSelectedMessageId(null);
 
-      if (deleteForEveryone && socket && chat?.phone) {
-        socket.emit('delete_message', { to: chat.phone, messageId, chatId });
+      if (deleteForEveryone && socket && chatId) {
+        socket.emit('delete_message', { 
+          to: chatId, 
+          messageId, 
+          isGroup: chat?.type === 'group' 
+        });
       }
 
       const toast = document.createElement('div');
@@ -285,6 +299,59 @@ export default function ChatScreen({ chatId, socket, isConnected, onBack, onCall
       setTimeout(() => toast.remove(), 3000);
     }
   }, [recordingDuration, isRecording]);
+
+  const transcribeVoiceMessage = async (messageId: string, base64Audio: string) => {
+    if (transcribingId) return;
+    setTranscribingId(messageId);
+    try {
+      // Use the Gemini API for transcription
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { text: "Transcribe this audio message accurately. Return ONLY the text of the transcription. If the audio is unclear, say 'Could not transcribe'." },
+              { inline_data: { mime_type: "audio/webm", data: base64Audio.split(',')[1] } }
+            ]
+          }]
+        })
+      });
+      
+      const data = await response.json();
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "Could not transcribe";
+      
+      // Update local state and DB
+      setMessages(prev => prev.map(m => m.id === messageId ? { ...m, transcription: text } : m));
+      const msg = messages.find(m => m.id === messageId);
+      if (msg) {
+        await saveMessage({ ...msg, transcription: text });
+      }
+    } catch (err) {
+      console.error("Transcription error:", err);
+      const toast = document.createElement('div');
+      toast.className = 'fixed bottom-24 left-1/2 -translate-x-1/2 bg-red-500 text-white px-6 py-3 rounded-full shadow-2xl z-[100] font-bold';
+      toast.innerText = "Transcription failed!";
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    } finally {
+      setTranscribingId(null);
+    }
+  };
+
+  const cancelRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.onstop = null; // Prevent sending
+      mediaRecorderRef.current.stop();
+    }
+    setIsRecording(false);
+    if (recordingIntervalRef.current) {
+      clearInterval(recordingIntervalRef.current);
+    }
+    setRecordingDuration(0);
+    recordingDurationRef.current = 0;
+    audioChunksRef.current = [];
+  };
 
   const toggleRecording = async () => {
     if (!isRecording) {
@@ -523,7 +590,7 @@ export default function ChatScreen({ chatId, socket, isConnected, onBack, onCall
       {/* Header */}
       <header className="sticky top-0 z-30 flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-white shadow-sm">
         <div className="flex items-center gap-3">
-          <button onClick={onBack}>
+          <button onClick={onBack} style={{ touchAction: 'manipulation' }}>
             <ArrowLeft className="w-6 h-6 text-primary" />
           </button>
           <div className="relative">
@@ -556,6 +623,7 @@ export default function ChatScreen({ chatId, socket, isConnected, onBack, onCall
             onClick={() => onCall('audio')}
             className="p-2.5 hover:bg-surface rounded-full transition-colors active:scale-90"
             aria-label="Audio Call"
+            style={{ touchAction: 'manipulation' }}
           >
             <Phone className="w-5 h-5 text-primary" />
           </button>
@@ -563,6 +631,7 @@ export default function ChatScreen({ chatId, socket, isConnected, onBack, onCall
             onClick={() => onCall('video')}
             className="p-2.5 hover:bg-surface rounded-full transition-colors active:scale-90"
             aria-label="Video Call"
+            style={{ touchAction: 'manipulation' }}
           >
             <Video className="w-5 h-5 text-primary" />
           </button>
@@ -570,6 +639,7 @@ export default function ChatScreen({ chatId, socket, isConnected, onBack, onCall
             onClick={onViewProfile}
             className="p-2.5 hover:bg-surface rounded-full transition-colors active:scale-90"
             aria-label="More Options"
+            style={{ touchAction: 'manipulation' }}
           >
             <MoreVertical className="w-5 h-5 text-primary" />
           </button>
@@ -597,12 +667,12 @@ export default function ChatScreen({ chatId, socket, isConnected, onBack, onCall
             <AnimatePresence>
               {selectedMessageId === msg.id && (
                 <motion.div 
-                  initial={{ opacity: 0, scale: 0.9, y: 5 }}
+                  initial={{ opacity: 0, scale: 0.9, y: 10 }}
                   animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.9, y: 5 }}
+                  exit={{ opacity: 0, scale: 0.9, y: 10 }}
                   className={cn(
-                    "absolute z-50 bg-white shadow-2xl rounded-xl border border-gray-100 p-1 flex flex-col min-w-[150px]",
-                    msg.senderId === 'me' ? "right-full mr-2 top-0" : "left-full ml-2 top-0"
+                    "absolute z-50 bg-white shadow-[0_10px_40px_rgba(0,0,0,0.15)] rounded-2xl border border-gray-100 p-1.5 flex flex-col min-w-[180px]",
+                    msg.senderId === 'me' ? "right-0 top-full mt-2" : "left-0 top-full mt-2"
                   )}
                 >
                   <button 
@@ -610,10 +680,11 @@ export default function ChatScreen({ chatId, socket, isConnected, onBack, onCall
                       e.stopPropagation();
                       handleDeleteMessage(msg.id, false);
                     }}
-                    className="flex items-center gap-2 px-3 py-2.5 hover:bg-gray-50 rounded-lg text-xs font-bold text-text-primary transition-colors text-left"
+                    className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 rounded-xl text-sm font-bold text-text-primary transition-colors text-left group/item"
+                    style={{ touchAction: 'manipulation' }}
                   >
-                    <Trash2 className="w-3.5 h-3.5 text-gray-400" />
-                    Delete for Me
+                    <span>Delete for Me</span>
+                    <Trash2 className="w-4 h-4 text-gray-400 group-hover/item:text-red-500 transition-colors" />
                   </button>
                   {msg.senderId === 'me' && (
                     <button 
@@ -621,10 +692,11 @@ export default function ChatScreen({ chatId, socket, isConnected, onBack, onCall
                         e.stopPropagation();
                         handleDeleteMessage(msg.id, true);
                       }}
-                      className="flex items-center gap-2 px-3 py-2.5 hover:bg-red-50 rounded-lg text-xs font-bold text-red-500 transition-colors border-t border-gray-50 text-left"
+                      className="flex items-center justify-between px-4 py-3 hover:bg-red-50 rounded-xl text-sm font-bold text-red-500 transition-colors border-t border-gray-50 text-left group/item"
+                      style={{ touchAction: 'manipulation' }}
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      Delete for Everyone
+                      <span>Delete for Everyone</span>
+                      <Trash2 className="w-4 h-4 text-red-500" />
                     </button>
                   )}
                 </motion.div>
@@ -650,6 +722,7 @@ export default function ChatScreen({ chatId, socket, isConnected, onBack, onCall
                   "absolute top-1 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-full hover:bg-black/10 z-10",
                   msg.senderId === 'me' ? "left-1" : "right-1"
                 )}
+                style={{ touchAction: 'manipulation' }}
               >
                 <MoreVertical className={cn("w-3.5 h-3.5", msg.senderId === 'me' ? "text-white" : "text-gray-400")} />
               </button>
@@ -673,6 +746,7 @@ export default function ChatScreen({ chatId, socket, isConnected, onBack, onCall
                     <button 
                       onClick={() => msg.mediaUrl && handlePlayAudio(msg.id, msg.mediaUrl)}
                       className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center hover:bg-white/30 transition-colors shrink-0"
+                      style={{ touchAction: 'manipulation' }}
                     >
                       {playingMessageId === msg.id && !audioRef.current?.paused ? (
                         <Pause className="w-4 h-4 fill-current" />
@@ -700,7 +774,30 @@ export default function ChatScreen({ chatId, socket, isConnected, onBack, onCall
                         </span>
                       </div>
                     </div>
+
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (msg.mediaUrl) transcribeVoiceMessage(msg.id, msg.mediaUrl);
+                      }}
+                      className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center hover:bg-white/30 transition-colors shrink-0"
+                      title="Transcribe"
+                      disabled={transcribingId === msg.id}
+                      style={{ touchAction: 'manipulation' }}
+                    >
+                      {transcribingId === msg.id ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Languages className="w-4 h-4" />
+                      )}
+                    </button>
                   </div>
+                  {msg.transcription && (
+                    <div className="mt-2 p-2 bg-black/10 rounded-lg text-[11px] leading-tight border-l-2 border-white/30">
+                      <div className="text-[9px] uppercase font-black opacity-50 mb-0.5">Transcription</div>
+                      {msg.transcription}
+                    </div>
+                  )}
                 </div>
               )}
               {msg.type !== 'image' && msg.type !== 'voice' && (
@@ -712,6 +809,7 @@ export default function ChatScreen({ chatId, socket, isConnected, onBack, onCall
                     onClick={() => generateVoice(msg.id, msg.text)}
                     className="mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
                     disabled={isGeneratingVoice === msg.id}
+                    style={{ touchAction: 'manipulation' }}
                   >
                     {isGeneratingVoice === msg.id ? (
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -760,6 +858,7 @@ export default function ChatScreen({ chatId, socket, isConnected, onBack, onCall
                   key={emoji} 
                   onClick={() => addEmoji(emoji)}
                   className="text-2xl hover:scale-125 transition-transform"
+                  style={{ touchAction: 'manipulation' }}
                 >
                   {emoji}
                 </button>
@@ -772,37 +871,56 @@ export default function ChatScreen({ chatId, socket, isConnected, onBack, onCall
           <button 
             onClick={() => setShowEmojiPicker(!showEmojiPicker)}
             className={cn("transition-colors flex-shrink-0", showEmojiPicker ? "text-primary" : "text-text-secondary")}
+            style={{ touchAction: 'manipulation' }}
           >
             <Smile className="w-6 h-6" />
           </button>
           
           <div className="flex-1 bg-surface rounded-2xl px-3 py-1.5 flex items-center gap-2 min-w-0">
-            <input 
-              type="text" 
-              value={inputText}
-              onChange={handleInputChange}
-              onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-              placeholder={isRecording ? `Recording... ${Math.floor(recordingDuration / 60)}:${(recordingDuration % 60).toString().padStart(2, '0')}` : "Message..."}
-              className={cn(
-                "flex-1 bg-transparent border-none focus:outline-none text-sm text-text-primary min-w-0",
-                isRecording && "text-red-500 font-bold animate-pulse"
-              )}
-              disabled={isRecording}
-            />
+            {isRecording ? (
+              <div className="flex-1 flex items-center justify-between">
+                <div className="flex items-center gap-2 text-red-500 font-bold animate-pulse">
+                  <div className="w-2 h-2 bg-red-500 rounded-full" />
+                  <span className="text-xs">Recording... {Math.floor(recordingDuration / 60)}:{(recordingDuration % 60).toString().padStart(2, '0')}</span>
+                </div>
+                <button 
+                  onClick={cancelRecording}
+                  className="text-xs font-bold text-gray-500 hover:text-red-500 transition-colors px-2 py-1"
+                  style={{ touchAction: 'manipulation' }}
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <input 
+                type="text" 
+                value={inputText}
+                onChange={handleInputChange}
+                onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                placeholder="Message..."
+                className="flex-1 bg-transparent border-none focus:outline-none text-sm text-text-primary min-w-0"
+              />
+            )}
             <div className="flex items-center gap-2 flex-shrink-0">
-              <button 
-                onClick={handleShareLocation}
-                className="text-text-secondary hover:text-primary transition-colors"
-                title="Share Location"
-              >
-                <MapPin className="w-5 h-5" />
-              </button>
-              <button 
-                onClick={() => fileInputRef.current?.click()}
-                className="text-text-secondary hover:text-primary transition-colors"
-              >
-                <Paperclip className="w-5 h-5" />
-              </button>
+              {!isRecording && (
+                <button 
+                  onClick={handleShareLocation}
+                  className="text-text-secondary hover:text-primary transition-colors"
+                  title="Share Location"
+                  style={{ touchAction: 'manipulation' }}
+                >
+                  <MapPin className="w-5 h-5" />
+                </button>
+              )}
+              {!isRecording && (
+                <button 
+                  onClick={() => fileInputRef.current?.click()}
+                  className="text-text-secondary hover:text-primary transition-colors"
+                  style={{ touchAction: 'manipulation' }}
+                >
+                  <Paperclip className="w-5 h-5" />
+                </button>
+              )}
             </div>
           </div>
 
@@ -828,23 +946,31 @@ export default function ChatScreen({ chatId, socket, isConnected, onBack, onCall
               <button 
                 onClick={handleSendMessage}
                 className="w-10 h-10 bg-primary rounded-full flex items-center justify-center text-white shadow-md active:scale-90 transition-transform flex-shrink-0"
+                style={{ touchAction: 'manipulation' }}
               >
                 <Send className="w-5 h-5" />
               </button>
             ) : (
               <div className="flex items-center gap-2">
+                {!isRecording && (
+                  <button 
+                    onClick={() => cameraInputRef.current?.click()}
+                    className="text-text-secondary hover:text-primary transition-colors p-1"
+                    style={{ touchAction: 'manipulation' }}
+                  >
+                    <Camera className="w-6 h-6" />
+                  </button>
+                )}
                 <button 
-                  onClick={() => cameraInputRef.current?.click()}
-                  className="text-text-secondary hover:text-primary transition-colors p-1"
-                >
-                  <Camera className="w-6 h-6" />
-                </button>
-                <button 
-                  onClick={toggleRecording}
+                  onMouseDown={toggleRecording}
+                  onMouseUp={toggleRecording}
+                  onTouchStart={(e) => { e.preventDefault(); toggleRecording(); }}
+                  onTouchEnd={(e) => { e.preventDefault(); toggleRecording(); }}
                   className={cn(
                     "w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300",
-                    isRecording ? "bg-red-500 text-white animate-pulse scale-110 shadow-lg" : "text-text-secondary hover:text-primary"
+                    isRecording ? "bg-red-500 text-white animate-pulse scale-125 shadow-lg z-50" : "text-text-secondary hover:text-primary"
                   )}
+                  style={{ touchAction: 'manipulation' }}
                 >
                   <Mic className="w-6 h-6" />
                 </button>

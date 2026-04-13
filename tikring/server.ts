@@ -64,16 +64,17 @@ async function startServer() {
       socket.to(toPhone).emit("user_joined_call", { from: user.phone });
     });
 
-    socket.on("offer", ({ to, offer }) => {
+    socket.on("offer", (payload) => {
       const user = users.get(socket.id);
-      console.log(`Relaying offer from ${user?.phone} to ${to}`);
-      socket.to(to).emit("offer", { from: user?.phone, offer });
+      console.log(`Relaying offer from ${user?.phone} to ${payload.to}. Type: ${payload.callType || payload.type || 'unknown'}`);
+      console.log('Offer Payload:', JSON.stringify({ ...payload, offer: 'SDP_HIDDEN' }));
+      socket.to(payload.to).emit("offer", { ...payload, from: user?.phone });
     });
 
-    socket.on("answer", ({ to, answer }) => {
+    socket.on("answer", (payload) => {
       const user = users.get(socket.id);
-      console.log(`Relaying answer from ${user?.phone} to ${to}`);
-      socket.to(to).emit("answer", { from: user?.phone, answer });
+      console.log(`Relaying answer from ${user?.phone} to ${payload.to}`);
+      socket.to(payload.to).emit("answer", { ...payload, from: user?.phone });
     });
 
     socket.on("ice_candidate", ({ to, candidate }) => {
@@ -100,8 +101,14 @@ async function startServer() {
       }
     });
 
-    socket.on("delete_message", ({ to, messageId, chatId }) => {
-      socket.to(to).emit("delete_message", { messageId, chatId });
+    socket.on("delete_message", ({ to, messageId, isGroup }) => {
+      const sender = users.get(socket.id);
+      console.log(`🗑️ Delete request from ${sender?.phone} for msg ${messageId} to ${to} (isGroup: ${isGroup})`);
+      if (isGroup) {
+        io.to(to).emit("delete_message", { messageId, from: to });
+      } else {
+        io.to(to).emit("delete_message", { messageId, from: sender?.phone || socket.id });
+      }
     });
 
     socket.on("typing", ({ to }) => {

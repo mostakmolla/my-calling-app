@@ -12,6 +12,7 @@ export interface Message {
   timestamp: number;
   type: 'text' | 'image' | 'voice' | 'video_call' | 'voice_call';
   status: 'sent' | 'delivered' | 'read';
+  transcription?: string;
 }
 
 export interface CallLog {
