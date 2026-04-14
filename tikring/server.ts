@@ -22,14 +22,26 @@ async function startServer() {
   io.on("connection", (socket) => {
     console.log("User connected:", socket.id);
 
-    socket.on("register", ({ username, phone }) => {
-      users.set(socket.id, { username, phone });
+    socket.on("register", ({ username, phone, statusMessage }) => {
+      users.set(socket.id, { username, phone, statusMessage });
       if (phone) {
         phoneToSocket.set(phone, socket.id);
         socket.join(phone); // Individual room for signaling
-        io.emit("user_status_change", { phone, isOnline: true });
+        io.emit("user_status_change", { phone, isOnline: true, statusMessage });
       }
       io.emit("user_list", Array.from(users.values()));
+    });
+
+    socket.on("update_status", ({ statusMessage }) => {
+      const user = users.get(socket.id);
+      if (user) {
+        user.statusMessage = statusMessage;
+        users.set(socket.id, user);
+        if (user.phone) {
+          io.emit("user_status_change", { phone: user.phone, isOnline: true, statusMessage });
+        }
+        io.emit("user_list", Array.from(users.values()));
+      }
     });
 
     socket.on("disconnect", () => {
@@ -142,6 +154,10 @@ async function startServer() {
 
     socket.on("join_group", (groupId) => {
       socket.join(groupId);
+    });
+
+    socket.on("create_post", (post) => {
+      socket.broadcast.emit("new_post", post);
     });
   });
 

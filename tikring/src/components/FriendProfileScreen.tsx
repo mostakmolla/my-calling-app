@@ -308,7 +308,10 @@ export default function FriendProfileScreen({ friend, onBack, onMessage, onCall,
               <CheckCircle2 className="w-5 h-5 text-primary fill-primary/10" />
             )}
           </div>
-          <p className="text-text-secondary text-sm font-medium">{friend.phone || 'No phone number'}</p>
+          {friend.statusMessage && (
+            <p className="text-primary text-sm font-bold mt-1 italic">"{friend.statusMessage}"</p>
+          )}
+          <p className="text-text-secondary text-sm font-medium mt-1">{friend.phone || 'No phone number'}</p>
           
           {friendStatus === 'pending' && (
             <div className="mt-3 flex items-center gap-2 bg-amber-50 text-amber-600 px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider">

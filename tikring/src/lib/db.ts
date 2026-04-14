@@ -1,7 +1,7 @@
 import { openDB, IDBPDatabase } from 'idb';
 
 const DB_NAME = 'ConnectMeDB';
-const DB_VERSION = 10;
+const DB_VERSION = 12;
 
 export interface Message {
   id: string;
@@ -48,15 +48,30 @@ export interface Chat {
   isOnline: boolean;
   type?: 'individual' | 'group';
   status?: 'friend' | 'pending' | 'blocked' | 'request_received';
+  statusMessage?: string;
   isBlocked?: boolean;
   isVerified?: boolean;
+}
+
+export interface Post {
+  id: string;
+  userId: string;
+  username: string;
+  userAvatar: string;
+  content: string;
+  image?: string;
+  timestamp: number;
+  likes: number;
+  comments: number;
+  shares: number;
+  isLiked?: boolean;
 }
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
 export const getDB = async () => {
   if (!dbPromise) {
-    dbPromise = openDB(DB_NAME, DB_VERSION + 1, {
+    dbPromise = openDB(DB_NAME, DB_VERSION, {
       upgrade(db) {
         if (!db.objectStoreNames.contains('messages')) {
           const messageStore = db.createObjectStore('messages', { keyPath: 'id' });
@@ -74,6 +89,9 @@ export const getDB = async () => {
         if (!db.objectStoreNames.contains('calls')) {
           db.createObjectStore('calls', { keyPath: 'id' });
         }
+        if (!db.objectStoreNames.contains('posts')) {
+          db.createObjectStore('posts', { keyPath: 'id' });
+        }
       },
     });
   }
@@ -82,6 +100,22 @@ export const getDB = async () => {
 
 export const initDB = () => {
   getDB();
+};
+
+export const savePost = async (post: Post) => {
+  const db = await getDB();
+  await db.put('posts', post);
+};
+
+export const getPosts = async () => {
+  const db = await getDB();
+  const posts = await db.getAll('posts');
+  return posts.sort((a, b) => b.timestamp - a.timestamp);
+};
+
+export const deletePost = async (id: string) => {
+  const db = await getDB();
+  await db.delete('posts', id);
 };
 
 export const getProfile = async () => {

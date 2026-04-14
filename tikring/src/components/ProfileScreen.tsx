@@ -999,8 +999,12 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
               <Camera className="w-5 h-5" />
             </button>
           </div>
-          <h3 className="mt-4 text-xl font-bold text-text-primary">{name || 'Your Name'}</h3>
-          <p className="text-text-secondary text-sm">{status}</p>
+          <h3 className="mt-4 text-xl font-black text-text-primary tracking-tight">{name || 'Your Name'}</h3>
+          {status && (
+            <div className="mt-2 px-4 py-1.5 bg-primary/10 rounded-full border border-primary/20">
+              <p className="text-primary text-xs font-bold italic">"{status}"</p>
+            </div>
+          )}
         </div>
 
         {/* Form Section */}

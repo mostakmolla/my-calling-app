@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { MessageSquare, Compass, Users, Phone, User, Mic, MicOff, Grid, Volume2, UserPlus, Video, PhoneOff, Check, X, Save } from 'lucide-react';
+import { MessageSquare, Compass, Users, Phone, User, Mic, MicOff, Grid, Volume2, UserPlus, Video, PhoneOff, Check, X, Save, Home } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import HomeScreen from './components/HomeScreen';
 import ChatScreen from './components/ChatScreen';
@@ -11,15 +11,36 @@ import FriendProfileScreen from './components/FriendProfileScreen';
 import CallHistoryScreen from './components/CallHistoryScreen';
 import CreateGroupScreen from './components/CreateGroupScreen';
 import GroupInfoScreen from './components/GroupInfoScreen';
-import { initDB, getChat, Chat, getProfile, saveProfile, addContact, saveMessage, Message, saveCallLog, CallLog, createGroup, Group, updateMessageStatus, getMessages, markAllMessagesAsRead, getGroup, updateGroup, deleteGroup, deleteMessage } from './lib/db';
+import FeedScreen from './components/FeedScreen';
+import { initDB, getChat, Chat, getProfile, saveProfile, addContact, saveMessage, Message, saveCallLog, CallLog, createGroup, Group, updateMessageStatus, getMessages, markAllMessagesAsRead, getGroup, updateGroup, deleteGroup, deleteMessage, getPosts, savePost, Post } from './lib/db';
 import { cn } from './lib/utils';
 import { ringtone } from './lib/ringtone';
 
-const STUN_SERVERS = {
+// ICE Servers configuration for WebRTC
+// For international calls (e.g., Saudi Arabia to Bangladesh), TURN servers are REQUIRED.
+// You can get free/paid TURN credentials from providers like Twilio, Xirsys, or Metered.ca
+const ICE_CONFIG = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
+    /* 
+    // Example TURN server configuration:
+    {
+      urls: 'turn:your-turn-server.com:3478',
+      username: 'your-username',
+      credential: 'your-password'
+    },
+    {
+      urls: 'turns:your-turn-server.com:443?transport=tcp', // Best for bypassing firewalls
+      username: 'your-username',
+      credential: 'your-password'
+    }
+    */
   ],
+  iceCandidatePoolSize: 10,
 };
 
 function ControlBtn({ icon: Icon, label, active, onClick }: any) {
@@ -259,8 +280,86 @@ function AudioCall({
   );
 }
 
+function SplashScreen() {
+  return (
+    <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center overflow-hidden bg-gradient-to-br from-[#3C3489] via-[#534AB7] to-[#7F77DD]">
+      {/* Background circles decoration */}
+      <div className="absolute -top-[60px] -right-[60px] w-[220px] h-[220px] rounded-full bg-white/5" />
+      <div className="absolute -bottom-[80px] -left-[80px] w-[280px] h-[280px] rounded-full bg-white/5" />
+
+      {/* Ripple rings */}
+      <div className="relative flex items-center justify-center mb-8">
+        <motion.div 
+          animate={{ scale: [1, 2.2], opacity: [0.6, 0] }}
+          transition={{ duration: 2, repeat: Infinity, ease: "easeOut" }}
+          className="absolute w-[120px] h-[120px] rounded-full border-2 border-white/40" 
+        />
+        <motion.div 
+          animate={{ scale: [1, 2.2], opacity: [0.6, 0] }}
+          transition={{ duration: 2, repeat: Infinity, ease: "easeOut", delay: 0.6 }}
+          className="absolute w-[120px] h-[120px] rounded-full border-2 border-white/30" 
+        />
+        <motion.div 
+          animate={{ scale: [1, 2.2], opacity: [0.6, 0] }}
+          transition={{ duration: 2, repeat: Infinity, ease: "easeOut", delay: 1.2 }}
+          className="absolute w-[120px] h-[120px] rounded-full border-2 border-white/20" 
+        />
+
+        {/* Logo circle */}
+        <motion.div 
+          animate={{ scale: [1, 1.08, 1] }}
+          transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+          className="w-[110px] h-[110px] rounded-full bg-white/15 border-2 border-white/30 flex items-center justify-center backdrop-blur-sm"
+        >
+          <svg width="56" height="56" viewBox="0 0 56 56" fill="none">
+            <path d="M14 28C14 20.3 20.3 14 28 14" stroke="white" strokeWidth="3" strokeLinecap="round"/>
+            <path d="M10 28C10 18.06 18.06 10 28 10" stroke="white" strokeWidth="2.5" strokeLinecap="round" opacity="0.6"/>
+            <path d="M6 28C6 15.85 15.85 6 28 6" stroke="white" strokeWidth="2" strokeLinecap="round" opacity="0.3"/>
+            <rect x="18" y="18" width="20" height="30" rx="4" fill="white" opacity="0.15"/>
+            <path d="M24 22 C18 27 18 41 24 46 L29 41 C27 39 26.5 36 27 34 L31 30 C29.5 27 29 24 27.5 22 Z" fill="white"/>
+            <circle cx="36" cy="23" r="3" fill="white" opacity="0.9"/>
+          </svg>
+        </motion.div>
+      </div>
+
+      {/* App name */}
+      <motion.div 
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2, duration: 1 }}
+        className="text-center mb-2"
+      >
+        <span className="text-[42px] font-bold text-white tracking-tighter italic">Tik</span>
+        <span className="text-[42px] font-bold text-[#CECBF6] tracking-tighter italic">Ring</span>
+      </motion.div>
+
+      {/* Tagline */}
+      <motion.div 
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.4, duration: 1 }}
+        className="text-center mb-10"
+      >
+        <span className="text-[12px] text-white/70 tracking-[0.2em] font-bold uppercase">Connect · Ring · Anywhere</span>
+      </motion.div>
+
+      {/* Loading dots */}
+      <div className="flex gap-2 mb-10">
+        <motion.div animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.4, repeat: Infinity }} className="w-2 h-2 rounded-full bg-white" />
+        <motion.div animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.4, repeat: Infinity, delay: 0.3 }} className="w-2 h-2 rounded-full bg-white" />
+        <motion.div animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.4, repeat: Infinity, delay: 0.6 }} className="w-2 h-2 rounded-full bg-white" />
+      </div>
+
+      {/* Bottom brand */}
+      <div className="absolute bottom-6 text-center">
+        <span className="text-[10px] text-white/40 tracking-widest uppercase font-bold">by TIKMERK · Mostaq</span>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'chats' | 'calls' | 'explore' | 'contacts'>('chats');
+  const [activeTab, setActiveTab] = useState<'home' | 'chats' | 'calls' | 'explore' | 'contacts'>('home');
   const [currentScreen, setCurrentScreen] = useState<'main' | 'chat' | 'call' | 'profile' | 'friend_profile' | 'create_group' | 'group_info'>('main');
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [selectedChatName, setSelectedChatName] = useState<string>('');
@@ -273,6 +372,7 @@ export default function App() {
   const [isCallMinimized, setIsCallMinimized] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeakerOn, setIsSpeakerOn] = useState(false);
+  const [showSplash, setShowSplash] = useState(true);
   
   // WebRTC & Socket State
   const [socket, setSocket] = useState<Socket | null>(null);
@@ -296,6 +396,13 @@ export default function App() {
   // Helper refs for socket listeners
   const currentScreenRef = useRef(currentScreen);
   const selectedChatIdRef = useRef(selectedChatId);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setShowSplash(false);
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     currentScreenRef.current = currentScreen;
@@ -375,7 +482,8 @@ export default function App() {
         console.log('✅ Connected to Server');
         newSocket.emit('register', {
           username: profile?.name,
-          phone: profile?.phone
+          phone: profile?.phone,
+          statusMessage: profile?.status
         });
       });
 
@@ -394,13 +502,14 @@ export default function App() {
         setOnlineUsers(users.filter(u => u.phone !== profile?.phone));
       });
 
-      newSocket.on('user_status_change', ({ phone, isOnline }) => {
+      newSocket.on('user_status_change', ({ phone, isOnline, statusMessage }) => {
         setOnlineUsers(prev => {
           if (isOnline) {
-            if (!prev.find(u => u.phone === phone)) {
-              return [...prev, { phone, isOnline: true }];
+            const existing = prev.find(u => u.phone === phone);
+            if (!existing) {
+              return [...prev, { phone, isOnline: true, statusMessage }];
             }
-            return prev;
+            return prev.map(u => u.phone === phone ? { ...u, statusMessage } : u);
           } else {
             return prev.filter(u => u.phone !== phone);
           }
@@ -462,7 +571,7 @@ export default function App() {
           setCurrentScreen('call');
           
           // Initialize PeerConnection
-          const pc = new RTCPeerConnection(STUN_SERVERS);
+          const pc = new RTCPeerConnection(ICE_CONFIG);
           peerConnectionRef.current = pc;
           iceCandidateQueue.current = [];
 
@@ -972,6 +1081,17 @@ export default function App() {
 
   const renderMainContent = () => {
     switch (activeTab) {
+      case 'home':
+        return (
+          <FeedScreen 
+            socket={socket}
+            onlineUsers={onlineUsers}
+            onChatSelect={(id) => {
+              setSelectedChatId(id);
+              setCurrentScreen('chat');
+            }}
+          />
+        );
       case 'chats':
         return (
           <HomeScreen 
@@ -1019,13 +1139,17 @@ export default function App() {
                 setCurrentScreen('friend_profile');
               }
             }}
-            onBack={() => setActiveTab('chats')}
+            onBack={() => setActiveTab('home')}
           />
         );
       case 'explore':
         return (
-          <div className="flex-1 flex items-center justify-center bg-surface">
-            <p className="text-text-secondary font-medium">Explore Screen Coming Soon</p>
+          <div className="flex-1 flex items-center justify-center bg-[#F8F9FD]">
+            <div className="text-center">
+              <Compass className="w-16 h-16 text-primary/20 mx-auto mb-4" />
+              <h3 className="text-xl font-black text-text-primary mb-2">Explore</h3>
+              <p className="text-sm text-text-secondary">Coming Soon</p>
+            </div>
           </div>
         );
       default:
@@ -1035,6 +1159,20 @@ export default function App() {
 
   return (
     <div className="h-screen w-screen bg-gray-100 flex items-center justify-center font-sans">
+      <AnimatePresence>
+        {showSplash && (
+          <motion.div
+            key="splash"
+            initial={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.8, ease: "easeInOut" }}
+            className="fixed inset-0 z-[200]"
+          >
+            <SplashScreen />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="w-full h-full max-w-md bg-white shadow-2xl relative overflow-hidden flex flex-col">
         
         <div className="flex-1 relative overflow-hidden">
@@ -1164,6 +1302,9 @@ export default function App() {
 
         {currentScreen === 'main' && (
           <nav className="bg-nav-bg flex items-center justify-around py-3 px-6 z-20">
+            <button onClick={() => setActiveTab('home')} className="flex flex-col items-center gap-1" style={{ touchAction: 'manipulation' }}>
+              <Home className={cn("w-6 h-6", activeTab === 'home' ? "fill-white text-white" : "text-white/70")} />
+            </button>
             <button onClick={() => setActiveTab('chats')} className="flex flex-col items-center gap-1" style={{ touchAction: 'manipulation' }}>
               <MessageSquare className={cn("w-6 h-6", activeTab === 'chats' ? "fill-white text-white" : "text-white/70")} />
             </button>

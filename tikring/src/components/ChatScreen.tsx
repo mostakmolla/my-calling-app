@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Phone, Video, MoreVertical, Smile, Paperclip, Camera, Send, Mic, X, Play, Pause, ExternalLink, MapPin, Volume2, Loader2, Users, Languages } from 'lucide-react';
+import { ArrowLeft, Phone, Video, MoreVertical, Smile, Paperclip, Camera, Send, Mic, X, Play, Pause, ExternalLink, MapPin, Volume2, Loader2, Users, Languages, Copy } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/src/lib/utils';
 import { Message, saveMessage, getMessages, getChat, Chat, getGroup, Group, markAllMessagesAsRead, updateMessageStatus, deleteMessage } from '@/src/lib/db';
@@ -31,6 +31,7 @@ export default function ChatScreen({ chatId, socket, isConnected, onBack, onCall
   const [playingMessageId, setPlayingMessageId] = useState<string | null>(null);
   const [isGeneratingVoice, setIsGeneratingVoice] = useState<string | null>(null);
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
+  const [copySuccess, setCopySuccess] = useState<string | null>(null);
   const [audioCurrentTime, setAudioCurrentTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
   const [transcribingId, setTranscribingId] = useState<string | null>(null);
@@ -218,6 +219,14 @@ export default function ChatScreen({ chatId, socket, isConnected, onBack, onCall
     setMessages(prev => [...prev, newMessage]);
     setInputText('');
     setShowEmojiPicker(false);
+  };
+
+  const handleCopyMessage = (text: string, id: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopySuccess(id);
+      setTimeout(() => setCopySuccess(null), 2000);
+      setSelectedMessageId(null);
+    });
   };
 
   const handleDeleteMessage = async (messageId: string, deleteForEveryone: boolean = false) => {
@@ -587,6 +596,21 @@ export default function ChatScreen({ chatId, socket, isConnected, onBack, onCall
 
   return (
     <div className="flex flex-col h-full bg-white relative overflow-hidden">
+      {/* Copy Success Toast */}
+      <AnimatePresence>
+        {copySuccess && (
+          <motion.div 
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-black/80 backdrop-blur-xl text-white px-6 py-3 rounded-full shadow-2xl z-[100] font-bold flex items-center gap-2 border border-white/10"
+          >
+            <Check className="w-4 h-4 text-green-400" />
+            Message Copied!
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Header */}
       <header className="sticky top-0 z-30 flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-white shadow-sm">
         <div className="flex items-center gap-3">
@@ -675,6 +699,17 @@ export default function ChatScreen({ chatId, socket, isConnected, onBack, onCall
                     msg.senderId === 'me' ? "right-0 top-full mt-2" : "left-0 top-full mt-2"
                   )}
                 >
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleCopyMessage(msg.text, msg.id);
+                    }}
+                    className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 rounded-xl text-sm font-bold text-text-primary transition-colors text-left group/item"
+                    style={{ touchAction: 'manipulation' }}
+                  >
+                    <span>Copy Text</span>
+                    <Copy className="w-4 h-4 text-gray-400 group-hover/item:text-primary transition-colors" />
+                  </button>
                   <button 
                     onClick={(e) => {
                       e.stopPropagation();
