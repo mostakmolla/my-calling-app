@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Camera, User, Phone, Info, Bell, Shield, LogOut, Save, ChevronDown, Check, Grid, Film, ImageIcon, PlayCircle, X, MoreVertical, MessageSquare, Compass, Heart, MessageCircle, Share2, Play, Send, Copy, CheckCircle2, Music, Upload, CheckCircle, QrCode } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
-import { getProfile, saveProfile } from '@/src/lib/db';
+import { getProfile, saveProfile, getPostsByUserId, Post as DBPost } from '@/src/lib/db';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/src/lib/utils';
 
@@ -259,21 +259,6 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
     setNewComment('');
   };
 
-  const myContent = {
-    reels: [
-      { id: 'my-reel-1', thumbnail: 'https://picsum.photos/seed/myreel1/200/300', videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-girl-in-neon-light-1282-large.mp4', views: '124', likes: '12', comments: '2' },
-      { id: 'my-reel-2', thumbnail: 'https://picsum.photos/seed/myreel2/200/300', videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-tree-with-yellow-leaves-low-angle-shot-1305-large.mp4', views: '45', likes: '5', comments: '0' },
-    ],
-    photos: [
-      { id: 'my-photo-1', url: 'https://picsum.photos/seed/myphoto1/300/300', likes: '34' },
-      { id: 'my-photo-2', url: 'https://picsum.photos/seed/myphoto2/300/300', likes: '18' },
-      { id: 'my-photo-3', url: 'https://picsum.photos/seed/myphoto3/300/300', likes: '56' },
-    ],
-    videos: [
-      { id: 'my-video-1', thumbnail: 'https://picsum.photos/seed/myvideo1/300/200', videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-waves-in-the-ocean-1271-large.mp4', duration: '0:15', views: '1.2k', likes: '245' },
-    ]
-  };
-
   const [avatar, setAvatar] = useState('https://picsum.photos/seed/me/200');
   const [isSaving, setIsSaving] = useState(false);
   const [isCountrySelectorOpen, setIsCountrySelectorOpen] = useState(false);
@@ -313,6 +298,31 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
   const [confirmPIN, setConfirmPIN] = useState('');
   const [pinStep, setPinStep] = useState<'enter' | 'confirm'>('enter');
   const [pinError, setPinError] = useState('');
+  const [userPosts, setUserPosts] = useState<DBPost[]>([]);
+
+  const myContent = {
+    reels: userPosts.filter(p => p.type === 'reel').map(p => ({
+      id: p.id,
+      thumbnail: p.video || p.image || '',
+      videoUrl: p.video || '',
+      views: '0',
+      likes: p.likes.toString(),
+      comments: p.comments.toString()
+    })),
+    photos: userPosts.filter(p => p.type === 'photo').map(p => ({
+      id: p.id,
+      url: p.image || '',
+      likes: p.likes.toString()
+    })),
+    videos: userPosts.filter(p => p.type === 'video').map(p => ({
+      id: p.id,
+      thumbnail: p.image || '',
+      videoUrl: p.video || '',
+      duration: '0:00',
+      views: '0',
+      likes: p.likes.toString()
+    }))
+  };
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -330,6 +340,10 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
         if (profile.privacySettings) setPrivacySettings(profile.privacySettings);
         if (profile.securitySettings) setSecuritySettings(profile.securitySettings);
         if (profile.callTone) setCallTone(profile.callTone);
+
+        // Fetch user posts
+        const posts = await getPostsByUserId(profile.phone || 'me');
+        setUserPosts(posts);
       }
     };
     fetchProfile();

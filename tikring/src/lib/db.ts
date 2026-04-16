@@ -60,6 +60,9 @@ export interface Post {
   userAvatar: string;
   content: string;
   image?: string;
+  video?: string;
+  videoDuration?: number; // in seconds
+  type: 'text' | 'photo' | 'video' | 'reel';
   timestamp: number;
   likes: number;
   comments: number;
@@ -111,6 +114,14 @@ export const getPosts = async () => {
   const db = await getDB();
   const posts = await db.getAll('posts');
   return posts.sort((a, b) => b.timestamp - a.timestamp);
+};
+
+export const getPostsByUserId = async (userId: string) => {
+  const db = await getDB();
+  const posts = await db.getAll('posts');
+  return posts
+    .filter(p => p.userId === userId)
+    .sort((a, b) => b.timestamp - a.timestamp);
 };
 
 export const deletePost = async (id: string) => {

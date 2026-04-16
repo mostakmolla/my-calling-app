@@ -466,15 +466,22 @@ export default function App() {
         profile = defaultProfile;
       }
 
-      // CRITICAL: Never change this URL
-      const newSocket = io('https://my-calling-app-production.up.railway.app', {
-        transports: ['websocket', 'polling'],
+      // Connect to the local server
+      const newSocket = io(window.location.origin, {
+        transports: ['polling', 'websocket'], // Try polling first for better compatibility in some environments
         reconnectionAttempts: 20,
         reconnectionDelay: 1000,
         reconnectionDelayMax: 5000,
         timeout: 20000,
       });
       setSocket(newSocket);
+
+      newSocket.on('connect_error', (err) => {
+        console.error('❌ Socket Connection Error:', err.message);
+        if (err.message === 'xhr poll error') {
+          console.log('Retrying with different transport...');
+        }
+      });
 
       newSocket.on('connect', () => {
         setIsConnected(true);
