@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { MessageSquare, Compass, Users, Phone, User, Mic, MicOff, Grid, Volume2, UserPlus, Video, PhoneOff, Check, X, Save, Home } from 'lucide-react';
+import { MessageSquare, Compass, Users, Phone, User, Mic, MicOff, Grid, Volume2, UserPlus, Video, PhoneOff, Check, X, Save, Home, RefreshCw, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import HomeScreen from './components/HomeScreen';
 import ChatScreen from './components/ChatScreen';
@@ -12,7 +12,7 @@ import CallHistoryScreen from './components/CallHistoryScreen';
 import CreateGroupScreen from './components/CreateGroupScreen';
 import GroupInfoScreen from './components/GroupInfoScreen';
 import FeedScreen from './components/FeedScreen';
-import { initDB, getChat, Chat, getProfile, saveProfile, addContact, saveMessage, Message, saveCallLog, CallLog, createGroup, Group, updateMessageStatus, getMessages, markAllMessagesAsRead, getGroup, updateGroup, deleteGroup, deleteMessage, getPosts, savePost, Post } from './lib/db';
+import { initDB, getChat, Chat, getProfile, saveProfile, addContact, saveMessage, Message, saveCallLog, CallLog, createGroup, Group, updateMessageStatus, getMessages, markAllMessagesAsRead, getGroup, updateGroup, deleteGroup, deleteMessage, getPosts, savePost, Post, upsertChat, getChats } from './lib/db';
 import { cn } from './lib/utils';
 import { ringtone } from './lib/ringtone';
 
@@ -466,47 +466,58 @@ export default function App() {
         profile = defaultProfile;
       }
 
+      setIsConnecting(true);
+      
       // Connect to the local server
-      const newSocket = io(window.location.origin, {
-        transports: ['polling', 'websocket'], // Try polling first for better compatibility in some environments
-        reconnectionAttempts: 20,
+      const newSocket = io({
+        transports: ['polling', 'websocket'], // Polling first for stability
+        reconnectionAttempts: 10,
         reconnectionDelay: 1000,
         reconnectionDelayMax: 5000,
-        timeout: 20000,
+        timeout: 15000,
       });
       setSocket(newSocket);
 
-      newSocket.on('connect_error', (err) => {
-        console.error('❌ Socket Connection Error:', err.message);
-        if (err.message === 'xhr poll error') {
-          console.log('Retrying with different transport...');
-        }
-      });
-
-      newSocket.on('connect', () => {
+      newSocket.on('connect', async () => {
         setIsConnected(true);
         setIsConnecting(false);
         console.log('✅ Connected to Server');
+        const p = await getProfile();
         newSocket.emit('register', {
-          username: profile?.name,
-          phone: profile?.phone,
-          statusMessage: profile?.status
+          username: p?.name,
+          phone: p?.phone,
+          statusMessage: p?.status
+        });
+
+        // Join all existing groups
+        const allChats = await getChats();
+        allChats.filter(c => c.type === 'group').forEach(group => {
+          newSocket.emit('join_group', group.id);
         });
       });
 
       newSocket.on('connect_error', (err) => {
-        console.error('❌ Connection Error:', err.message);
+        console.error('❌ Socket Connection Error:', err.message);
         setIsConnected(false);
-        setIsConnecting(false);
+        if (err.message === 'xhr poll error') {
+          console.log('XHR Poll Error - likely network restriction');
+        }
       });
 
-      newSocket.on('disconnect', () => {
+      newSocket.on('disconnect', (reason) => {
         setIsConnected(false);
         setIsConnecting(false);
+        console.log('🔌 Disconnected:', reason);
+        if (reason === 'io server disconnect') {
+          newSocket.connect();
+        }
       });
 
       newSocket.on('user_list', (users: any[]) => {
-        setOnlineUsers(users.filter(u => u.phone !== profile?.phone));
+        console.log('👥 Received user list:', users.length);
+        getProfile().then(p => {
+          setOnlineUsers(users.filter(u => u.phone && u.phone !== p?.phone));
+        });
       });
 
       newSocket.on('user_status_change', ({ phone, isOnline, statusMessage }) => {
@@ -664,6 +675,37 @@ export default function App() {
         } else {
           iceCandidateQueue.current.push(candidate);
         }
+      });
+
+      newSocket.on('friend_request_received', async (fromUser) => {
+        const contact: Chat = {
+          id: fromUser.phone,
+          name: fromUser.name,
+          avatar: fromUser.avatar,
+          phone: fromUser.phone,
+          unreadCount: 0,
+          isOnline: true,
+          status: 'request_received'
+        };
+        await addContact(contact);
+        ringtone.playNotificationTone();
+      });
+
+      newSocket.on('group_invitation', async (group: Group) => {
+        const chat: Chat = {
+          id: group.id,
+          name: group.name,
+          avatar: group.avatar,
+          unreadCount: 1,
+          isOnline: false,
+          type: 'group',
+          lastMessage: 'You were added to a group',
+          lastTimestamp: Date.now()
+        };
+        await upsertChat(chat);
+        await createGroup(group);
+        newSocket.emit('join_group', group.id);
+        ringtone.playNotificationTone();
       });
 
       newSocket.on('call_ended', () => {
@@ -1093,8 +1135,16 @@ export default function App() {
           <FeedScreen 
             socket={socket}
             onlineUsers={onlineUsers}
-            onChatSelect={(id) => {
+            isConnected={isConnected}
+            onChatSelect={async (id) => {
               setSelectedChatId(id);
+              const chat = await getChat(id);
+              if (chat) {
+                setSelectedChatName(chat.name);
+                setSelectedChatAvatar(chat.avatar);
+              } else {
+                setSelectedChatName(id); // Fallback to phone number
+              }
               setCurrentScreen('chat');
             }}
           />
@@ -1183,6 +1233,29 @@ export default function App() {
       <div className="w-full h-full max-w-md bg-white shadow-2xl relative overflow-hidden flex flex-col">
         
         <div className="flex-1 relative overflow-hidden">
+          {/* Global Connection Banner */}
+          <AnimatePresence>
+            {!isConnected && (
+              <motion.div 
+                initial={{ y: -50 }}
+                animate={{ y: 0 }}
+                exit={{ y: -50 }}
+                className="absolute top-0 left-0 right-0 z-50 bg-amber-400 text-amber-900 py-1.5 px-4 flex items-center justify-center gap-2 shadow-sm"
+              >
+                <RefreshCw className="w-3 h-3 animate-spin" />
+                <span className="text-[10px] font-black uppercase tracking-widest">
+                  {isConnecting ? 'TikRing: Connecting...' : 'TikRing: Offline. Retrying...'}
+                </span>
+                <button 
+                  onClick={() => socket?.connect()}
+                  className="ml-2 px-2 py-0.5 bg-amber-500 rounded text-[9px] font-black hover:bg-amber-600 transition-colors"
+                >
+                  RETRY
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {currentScreen === 'main' && renderMainContent()}
 
           {currentScreen === 'chat' && selectedChatId && (

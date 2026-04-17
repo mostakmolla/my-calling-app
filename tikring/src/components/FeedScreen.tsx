@@ -20,10 +20,11 @@ import { getPosts, savePost, Post, getProfile, saveProfile, addContact, Chat } f
 interface FeedScreenProps {
   socket: any;
   onlineUsers: any[];
+  isConnected: boolean;
   onChatSelect: (chatId: string) => void;
 }
 
-export default function FeedScreen({ socket, onlineUsers, onChatSelect }: FeedScreenProps) {
+export default function FeedScreen({ socket, onlineUsers, isConnected, onChatSelect }: FeedScreenProps) {
   const [posts, setPosts] = useState<Post[]>([]);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
@@ -257,7 +258,13 @@ export default function FeedScreen({ socket, onlineUsers, onChatSelect }: FeedSc
     <div className="flex flex-col h-full bg-[#F0F2F5] overflow-hidden font-sans">
       {/* Header */}
       <header className="bg-white px-4 py-3 flex items-center justify-between shadow-sm z-10">
-        <h1 className="text-2xl font-black text-primary italic tracking-tight">TikRing</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-black text-primary italic tracking-tight">TikRing</h1>
+          <div className={cn(
+            "w-2 h-2 rounded-full mt-1",
+            isConnected ? "bg-green-500 animate-pulse" : "bg-red-500"
+          )} title={isConnected ? "Connected" : "Disconnected"} />
+        </div>
         <div className="flex items-center gap-2">
           <button 
             onClick={() => setIsFilterSectionOpen(!isFilterSectionOpen)}
@@ -359,7 +366,27 @@ export default function FeedScreen({ socket, onlineUsers, onChatSelect }: FeedSc
           )}
         </AnimatePresence>
         {/* Status Section */}
-        <div className="bg-white mb-2 py-4 shadow-sm">
+        <div className="bg-white mb-2 py-4 shadow-sm relative z-0">
+          <div className="px-4 mb-3 flex items-center justify-between">
+            <h3 className="text-[10px] font-black text-text-primary uppercase tracking-widest flex items-center gap-2">
+              Recent Status
+              <div className={cn(
+                "flex items-center gap-1 px-2 py-0.5 rounded-full border",
+                isConnected ? "bg-green-50 border-green-100/50" : "bg-red-50 border-red-100/50"
+              )}>
+                <div className={cn(
+                  "w-1.5 h-1.5 rounded-full",
+                  isConnected ? "bg-green-500 animate-pulse" : "bg-red-500"
+                )} />
+                <span className={cn(
+                  "text-[9px] font-black tracking-tight",
+                  isConnected ? "text-green-600" : "text-red-600"
+                )}>
+                  {isConnected ? `${onlineUsers.length} Friends Online` : 'Offline'}
+                </span>
+              </div>
+            </h3>
+          </div>
           <div className="flex overflow-x-auto gap-4 px-4 no-scrollbar">
             {/* My Status */}
             <div className="flex flex-col items-center gap-1 flex-shrink-0">
@@ -406,6 +433,11 @@ export default function FeedScreen({ socket, onlineUsers, onChatSelect }: FeedSc
                   <span className="text-[9px] font-bold text-text-primary/80 truncate w-12 text-center">
                     {user.username?.split(' ')[0] || 'User'}
                   </span>
+                  {user.statusMessage && (
+                    <span className="text-[7px] text-text-secondary w-12 truncate text-center leading-none">
+                      {user.statusMessage}
+                    </span>
+                  )}
                 </div>
               ))}
           </div>

@@ -145,21 +145,6 @@ export default function HomeScreen({
 
   return (
     <div className="flex flex-col h-full bg-[#F8F9FD] relative overflow-hidden font-sans">
-      {/* Connection Status Banner */}
-      <AnimatePresence>
-        {!isConnected && (
-          <motion.div 
-            initial={{ y: -100 }}
-            animate={{ y: 0 }}
-            exit={{ y: -100 }}
-            className="fixed top-0 left-0 right-0 z-[100] bg-amber-400 text-amber-900 py-1.5 px-4 flex items-center justify-center gap-2 shadow-sm backdrop-blur-md bg-opacity-95"
-          >
-            <RefreshCw className="w-3 h-3 animate-spin" />
-            <span className="text-[10px] font-black uppercase tracking-widest">⚠️ Connecting...</span>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {/* Premium Header */}
       <motion.header 
         initial={{ y: -20, opacity: 0 }}
@@ -188,7 +173,10 @@ export default function HomeScreen({
                 referrerPolicy="no-referrer"
               />
             </div>
-            <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-primary animate-pulse" />
+            <div className={cn(
+              "absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-primary",
+              isConnected ? "bg-green-500 animate-pulse" : (isConnecting ? "bg-amber-400 animate-pulse" : "bg-red-500")
+            )} />
           </div>
         </div>
 
