@@ -13,7 +13,12 @@ async function startServer() {
     },
   });
 
-  const PORT = 3000;
+  const portArgIndex = process.argv.indexOf("--port");
+  const cliPort = portArgIndex !== -1 && process.argv[portArgIndex + 1] ? Number(process.argv[portArgIndex + 1]) : null;
+  const PORT = cliPort || Number(process.env.PORT) || 3000;
+
+  const hostArgIndex = process.argv.indexOf("--host");
+  const HOST = hostArgIndex !== -1 && process.argv[hostArgIndex + 1] ? process.argv[hostArgIndex + 1] : "0.0.0.0";
 
   // Presence tracking
   const users = new Map(); // socket.id -> { username, phone }
@@ -175,9 +180,21 @@ async function startServer() {
     });
   }
 
-  httpServer.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+  httpServer.on("error", (err: any) => {
+    console.error("HTTP server error:", err);
+  });
+
+  httpServer.listen(PORT, HOST, () => {
+    console.log(`Server running on http://${HOST}:${PORT}`);
   });
 }
+
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught Exception:", err);
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled Rejection:", reason);
+});
 
 startServer();

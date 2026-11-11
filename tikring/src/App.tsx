@@ -378,6 +378,7 @@ export default function App() {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
   const [onlineUsers, setOnlineUsers] = useState<any[]>([]);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
@@ -466,22 +467,54 @@ export default function App() {
         profile = defaultProfile;
       }
 
+      // Handle deep-link user URL (e.g. ?user=1334556899 or /user/1334556899)
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const targetPhone = urlParams.get('user') || window.location.pathname.match(/\/user\/([^\/]+)/)?.[1];
+        if (targetPhone && targetPhone !== profile.phone) {
+          const existing = await getChat(targetPhone);
+          if (!existing) {
+            await addContact({
+              id: targetPhone,
+              name: `User ${targetPhone.slice(-4)}`,
+              phone: targetPhone,
+              avatar: `https://picsum.photos/seed/${targetPhone}/100`,
+              unreadCount: 0,
+              isOnline: false,
+              status: 'friend',
+              type: 'individual'
+            });
+          }
+          setSelectedChatId(targetPhone);
+          setSelectedChatName(existing?.name || `User ${targetPhone.slice(-4)}`);
+          setSelectedChatAvatar(existing?.avatar || `https://picsum.photos/seed/${targetPhone}/100`);
+          setCurrentScreen('chat');
+        }
+      } catch (err) {
+        console.error('Error parsing user deep-link:', err);
+      } // ← NEW: Automatic user profile/chat routing from shared link
+
       setIsConnecting(true);
+      setConnectionError(null);
       
       // Connect to the local server
       const newSocket = io({
-        transports: ['polling', 'websocket'], // Polling first for stability
-        reconnectionAttempts: 10,
-        reconnectionDelay: 1000,
-        reconnectionDelayMax: 5000,
-        timeout: 15000,
+        transports: ['polling', 'websocket'], // ← CHANGED: Polling first guarantees instant connectivity on all devices/networks
+        upgrade: true, // ← NEW: Gracefully upgrade to WebSocket in background
+        reconnection: true, // ← NEW
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: 1000, // ← CHANGED
+        reconnectionDelayMax: 5000, // ← CHANGED
+        timeout: 20000, // ← CHANGED
+        autoConnect: true
       });
       setSocket(newSocket);
 
       newSocket.on('connect', async () => {
         setIsConnected(true);
         setIsConnecting(false);
-        console.log('✅ Connected to Server');
+        setConnectionError(null);
+        console.log('✅ Connected to Server via', newSocket.io.engine.transport.name);
         const p = await getProfile();
         newSocket.emit('register', {
           username: p?.name,
@@ -497,18 +530,19 @@ export default function App() {
       });
 
       newSocket.on('connect_error', (err) => {
-        console.error('❌ Socket Connection Error:', err.message);
+        console.error('❌ Connection Error:', err.message);
         setIsConnected(false);
-        if (err.message === 'xhr poll error') {
-          console.log('XHR Poll Error - likely network restriction');
-        }
+        setConnectionError(err.message);
+        // Reset isConnecting if we want to show "Offline" instead of "Connecting" forever
+        // but Socket.IO keeps trying, so we'll leave it true if it's still retrying
       });
 
       newSocket.on('disconnect', (reason) => {
         setIsConnected(false);
         setIsConnecting(false);
         console.log('🔌 Disconnected:', reason);
-        if (reason === 'io server disconnect') {
+        if (reason === 'io server disconnect' || reason === 'transport close') {
+          setConnectionError(reason);
           newSocket.connect();
         }
       });
@@ -1136,6 +1170,7 @@ export default function App() {
             socket={socket}
             onlineUsers={onlineUsers}
             isConnected={isConnected}
+            isConnecting={isConnecting}
             onChatSelect={async (id) => {
               setSelectedChatId(id);
               const chat = await getChat(id);
@@ -1233,7 +1268,6 @@ export default function App() {
       <div className="w-full h-full max-w-md bg-white shadow-2xl relative overflow-hidden flex flex-col">
         
         <div className="flex-1 relative overflow-hidden">
-          {/* Global Connection Banner */}
           <AnimatePresence>
             {!isConnected && (
               <motion.div 
@@ -1243,11 +1277,19 @@ export default function App() {
                 className="absolute top-0 left-0 right-0 z-50 bg-amber-400 text-amber-900 py-1.5 px-4 flex items-center justify-center gap-2 shadow-sm"
               >
                 <RefreshCw className="w-3 h-3 animate-spin" />
-                <span className="text-[10px] font-black uppercase tracking-widest">
+                <span className="text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
+                  <AlertCircle className="w-3 h-3" />
                   {isConnecting ? 'TikRing: Connecting...' : 'TikRing: Offline. Retrying...'}
+                  {connectionError && (
+                    <span className="opacity-60 font-mono">({connectionError})</span>
+                  )}
                 </span>
                 <button 
-                  onClick={() => socket?.connect()}
+                  onClick={() => {
+                    setConnectionError(null);
+                    setIsConnecting(true); // ← NEW: Immediate visual feedback
+                    socket?.connect();
+                  }}
                   className="ml-2 px-2 py-0.5 bg-amber-500 rounded text-[9px] font-black hover:bg-amber-600 transition-colors"
                 >
                   RETRY

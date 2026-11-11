@@ -21,10 +21,11 @@ interface FeedScreenProps {
   socket: any;
   onlineUsers: any[];
   isConnected: boolean;
+  isConnecting?: boolean;
   onChatSelect: (chatId: string) => void;
 }
 
-export default function FeedScreen({ socket, onlineUsers, isConnected, onChatSelect }: FeedScreenProps) {
+export default function FeedScreen({ socket, onlineUsers, isConnected, isConnecting = false, onChatSelect }: FeedScreenProps) {
   const [posts, setPosts] = useState<Post[]>([]);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
@@ -37,6 +38,14 @@ export default function FeedScreen({ socket, onlineUsers, isConnected, onChatSel
   const [activeTypeFilter, setActiveTypeFilter] = useState<Post['type'] | 'all'>('all');
   const [activeUserFilter, setActiveUserFilter] = useState<string | 'all'>('all');
   const [isFilterSectionOpen, setIsFilterSectionOpen] = useState(false);
+  const [, setTimeTick] = useState(Date.now()); // ← NEW: Live real-time counter tick
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setTimeTick(Date.now()); // ← NEW: Triggers dynamic countdown/elapsed time updates
+    }, 5000);
+    return () => clearInterval(timer);
+  }, []);
 
   const fetchData = useCallback(async () => {
     const [storedPosts, profile] = await Promise.all([
@@ -114,8 +123,12 @@ export default function FeedScreen({ socket, onlineUsers, isConnected, onChatSel
   useEffect(() => {
     if (!socket) return;
     
-    const handleNewPost = (post: Post) => {
-      setPosts(prev => [post, ...prev]);
+    const handleNewPost = async (post: Post) => {
+      await savePost(post); // ← NEW: Save other users' real-time posts locally
+      setPosts(prev => {
+        if (prev.some(p => p.id === post.id)) return prev;
+        return [post, ...prev]; // ← CHANGED: Real-time update at top of feed
+      });
     };
     
     socket.on('new_post', handleNewPost);
@@ -201,15 +214,18 @@ export default function FeedScreen({ socket, onlineUsers, isConnected, onChatSel
   };
 
   const formatTime = (timestamp: number) => {
-    const diff = Date.now() - timestamp;
-    const mins = Math.floor(diff / 60000);
+    const diff = Math.max(0, Date.now() - timestamp); // ← CHANGED: Real-time dynamic elapsed difference
+    const secs = Math.floor(diff / 1000); // ← NEW: Seconds precision
+    const mins = Math.floor(secs / 60);
     const hours = Math.floor(mins / 60);
     const days = Math.floor(hours / 24);
 
-    if (mins < 1) return 'Just now';
+    if (secs < 15) return 'Just now'; // ← CHANGED
+    if (secs < 60) return `${secs}s ago`; // ← NEW: Real-time seconds countdown
     if (mins < 60) return `${mins}m ago`;
     if (hours < 24) return `${hours}h ago`;
-    return `${days}d ago`;
+    if (days < 7) return `${days}d ago`;
+    return `${Math.floor(days / 7)}w ago`; // ← NEW: Weeks counter
   };
 
   const renderContentWithHashtags = (content: string) => {
@@ -229,6 +245,20 @@ export default function FeedScreen({ socket, onlineUsers, isConnected, onChatSel
           >
             {part}
           </span>
+        );
+      }
+      if (/^https?:\/\//i.test(part)) { // ← NEW: Clickable real-time link shares
+        return (
+          <a
+            key={i}
+            href={part}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="text-blue-600 underline font-semibold hover:text-blue-800 break-all"
+          >
+            {part}
+          </a>
         );
       }
       return part;
@@ -262,8 +292,8 @@ export default function FeedScreen({ socket, onlineUsers, isConnected, onChatSel
           <h1 className="text-2xl font-black text-primary italic tracking-tight">TikRing</h1>
           <div className={cn(
             "w-2 h-2 rounded-full mt-1",
-            isConnected ? "bg-green-500 animate-pulse" : "bg-red-500"
-          )} title={isConnected ? "Connected" : "Disconnected"} />
+            isConnected ? "bg-green-500 animate-pulse" : (isConnecting ? "bg-amber-400 animate-pulse" : "bg-red-500")
+          )} title={isConnected ? "Connected" : (isConnecting ? "Connecting" : "Disconnected")} />
         </div>
         <div className="flex items-center gap-2">
           <button 
@@ -372,17 +402,17 @@ export default function FeedScreen({ socket, onlineUsers, isConnected, onChatSel
               Recent Status
               <div className={cn(
                 "flex items-center gap-1 px-2 py-0.5 rounded-full border",
-                isConnected ? "bg-green-50 border-green-100/50" : "bg-red-50 border-red-100/50"
+                isConnected ? "bg-green-50 border-green-100/50" : (isConnecting ? "bg-amber-50 border-amber-100/50" : "bg-red-50 border-red-100/50")
               )}>
                 <div className={cn(
                   "w-1.5 h-1.5 rounded-full",
-                  isConnected ? "bg-green-500 animate-pulse" : "bg-red-500"
+                  isConnected ? "bg-green-500 animate-pulse" : (isConnecting ? "bg-amber-400 animate-pulse" : "bg-red-500")
                 )} />
                 <span className={cn(
                   "text-[9px] font-black tracking-tight",
-                  isConnected ? "text-green-600" : "text-red-600"
+                  isConnected ? "text-green-600" : (isConnecting ? "text-amber-600" : "text-red-600")
                 )}>
-                  {isConnected ? `${onlineUsers.length} Friends Online` : 'Offline'}
+                  {isConnected ? `${onlineUsers.length} Friends Online` : (isConnecting ? 'Connecting...' : 'Offline')}
                 </span>
               </div>
             </h3>
