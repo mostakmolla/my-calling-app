@@ -467,16 +467,45 @@ export default function App() {
         profile = defaultProfile;
       }
 
+      // Handle deep-link user URL (e.g. ?user=1334556899 or /user/1334556899)
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const targetPhone = urlParams.get('user') || window.location.pathname.match(/\/user\/([^\/]+)/)?.[1];
+        if (targetPhone && targetPhone !== profile.phone) {
+          const existing = await getChat(targetPhone);
+          if (!existing) {
+            await addContact({
+              id: targetPhone,
+              name: `User ${targetPhone.slice(-4)}`,
+              phone: targetPhone,
+              avatar: `https://picsum.photos/seed/${targetPhone}/100`,
+              unreadCount: 0,
+              isOnline: false,
+              status: 'friend',
+              type: 'individual'
+            });
+          }
+          setSelectedChatId(targetPhone);
+          setSelectedChatName(existing?.name || `User ${targetPhone.slice(-4)}`);
+          setSelectedChatAvatar(existing?.avatar || `https://picsum.photos/seed/${targetPhone}/100`);
+          setCurrentScreen('chat');
+        }
+      } catch (err) {
+        console.error('Error parsing user deep-link:', err);
+      } // ← NEW: Automatic user profile/chat routing from shared link
+
       setIsConnecting(true);
       setConnectionError(null);
       
       // Connect to the local server
       const newSocket = io({
-        transports: ['websocket', 'polling'], // WebSocket first is generally better for proxies
+        transports: ['polling', 'websocket'], // ← CHANGED: Polling first guarantees instant connectivity on all devices/networks
+        upgrade: true, // ← NEW: Gracefully upgrade to WebSocket in background
+        reconnection: true, // ← NEW
         reconnectionAttempts: Infinity,
-        reconnectionDelay: 2000,
-        reconnectionDelayMax: 10000,
-        timeout: 30000,
+        reconnectionDelay: 1000, // ← CHANGED
+        reconnectionDelayMax: 5000, // ← CHANGED
+        timeout: 20000, // ← CHANGED
         autoConnect: true
       });
       setSocket(newSocket);
@@ -1258,6 +1287,7 @@ export default function App() {
                 <button 
                   onClick={() => {
                     setConnectionError(null);
+                    setIsConnecting(true); // ← NEW: Immediate visual feedback
                     socket?.connect();
                   }}
                   className="ml-2 px-2 py-0.5 bg-amber-500 rounded text-[9px] font-black hover:bg-amber-600 transition-colors"

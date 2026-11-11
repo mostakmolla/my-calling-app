@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Camera, User, Phone, Info, Bell, Shield, LogOut, Save, ChevronDown, Check, Grid, Film, ImageIcon, PlayCircle, X, MoreVertical, MessageSquare, Compass, Heart, MessageCircle, Share2, Play, Send, Copy, CheckCircle2, Music, Upload, CheckCircle, QrCode } from 'lucide-react';
+import { ArrowLeft, Camera, User, Phone, Info, Bell, Shield, LogOut, Save, ChevronDown, Check, Grid, Film, ImageIcon, PlayCircle, X, MoreVertical, MessageSquare, Compass, Heart, MessageCircle, Share2, Play, Send, Copy, CheckCircle2, Music, Upload, CheckCircle, QrCode, Link2, ExternalLink } from 'lucide-react'; // ← CHANGED
 import { QRCodeCanvas } from 'qrcode.react';
-import { getProfile, saveProfile, getPostsByUserId, Post as DBPost } from '@/src/lib/db';
+import { getProfile, saveProfile, getPostsByUserId, getPosts, Post as DBPost } from '@/src/lib/db'; // ← CHANGED
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/src/lib/utils';
 
@@ -230,7 +230,7 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
   const [countryCode, setCountryCode] = useState('+880');
   const [countryFlag, setCountryFlag] = useState('🇧🇩');
   const [countryIso, setCountryIso] = useState('BD');
-  const [activeTab, setActiveTab] = useState<'all' | 'reels' | 'photos' | 'videos'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'reels' | 'photos' | 'videos' | 'links'>('all'); // ← CHANGED
   const [selectedMedia, setSelectedMedia] = useState<any>(null);
   const [showReactions, setShowReactions] = useState(false);
   const [currentReaction, setCurrentReaction] = useState<string | null>(null);
@@ -241,7 +241,8 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
   const [isCopied, setIsCopied] = useState(false);
 
   const handleShare = () => {
-    const shareUrl = `https://connectme.app/share/my-content/${selectedMedia.id}`;
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://tikring.app'; // ← NEW
+    const shareUrl = `${origin}/share/my-content/${selectedMedia.id}`; // ← CHANGED: Real TikRing share link
     navigator.clipboard.writeText(shareUrl);
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2000);
@@ -307,12 +308,19 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
       videoUrl: p.video || '',
       views: '0',
       likes: p.likes.toString(),
-      comments: p.comments.toString()
+      comments: p.comments.toString(),
+      content: p.content, // ← NEW
+      timestamp: p.timestamp, // ← NEW
+      type: 'reel' // ← NEW
     })),
     photos: userPosts.filter(p => p.type === 'photo').map(p => ({
       id: p.id,
       url: p.image || '',
-      likes: p.likes.toString()
+      likes: p.likes.toString(),
+      comments: p.comments.toString(), // ← NEW
+      content: p.content, // ← NEW
+      timestamp: p.timestamp, // ← NEW
+      type: 'photo' // ← NEW
     })),
     videos: userPosts.filter(p => p.type === 'video').map(p => ({
       id: p.id,
@@ -320,8 +328,35 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
       videoUrl: p.video || '',
       duration: '0:00',
       views: '0',
-      likes: p.likes.toString()
+      likes: p.likes.toString(),
+      comments: p.comments.toString(), // ← NEW
+      content: p.content, // ← NEW
+      timestamp: p.timestamp, // ← NEW
+      type: 'video' // ← NEW
+    })),
+    links: userPosts.filter(p => p.type === 'text' || (p.content && /https?:\/\//i.test(p.content))).map(p => ({ // ← NEW: Link & text posts category
+      id: p.id,
+      content: p.content,
+      likes: p.likes.toString(),
+      comments: p.comments.toString(),
+      timestamp: p.timestamp,
+      type: 'link'
     }))
+  };
+
+  const formatPostTime = (timestamp: number) => { // ← NEW: Relative elapsed time
+    const diff = Math.max(0, Date.now() - timestamp);
+    const secs = Math.floor(diff / 1000);
+    const mins = Math.floor(secs / 60);
+    const hours = Math.floor(mins / 60);
+    const days = Math.floor(hours / 24);
+
+    if (secs < 15) return 'Just now';
+    if (secs < 60) return `${secs}s ago`;
+    if (mins < 60) return `${mins}m ago`;
+    if (hours < 24) return `${hours}h ago`;
+    if (days < 7) return `${days}d ago`;
+    return `${Math.floor(days / 7)}w ago`;
   };
 
   useEffect(() => {
@@ -341,9 +376,14 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
         if (profile.securitySettings) setSecuritySettings(profile.securitySettings);
         if (profile.callTone) setCallTone(profile.callTone);
 
-        // Fetch user posts
-        const posts = await getPostsByUserId(profile.phone || 'me');
-        setUserPosts(posts);
+        // Fetch user posts across categories
+        const allPosts = await getPosts(); // ← CHANGED: Retrieve all user's authored posts
+        const myPosts = allPosts.filter(p => 
+          (profile.phone && p.userId === profile.phone) || 
+          p.userId === 'me' || 
+          p.username === profile.name
+        );
+        setUserPosts(myPosts);
       }
     };
     fetchProfile();
@@ -1093,18 +1133,19 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
 
           {/* Media Tabs Section */}
           <div className="mt-4 border-t border-gray-100">
-            <div className="flex border-b border-gray-100 bg-white sticky top-0 z-10">
+            <div className="flex border-b border-gray-100 bg-white sticky top-0 z-10 overflow-x-auto no-scrollbar">
               {[
                 { id: 'all', icon: Grid, label: 'All' },
-                { id: 'reels', icon: Film, label: 'Reel' },
                 { id: 'photos', icon: ImageIcon, label: 'Photo' },
-                { id: 'videos', icon: PlayCircle, label: 'Video' }
+                { id: 'videos', icon: PlayCircle, label: 'Video' },
+                { id: 'reels', icon: Film, label: 'Reel' },
+                { id: 'links', icon: Share2, label: 'Links' } // ← NEW: Link share category
               ].map(tab => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as any)}
                   className={cn(
-                    "flex-1 flex flex-col items-center py-3 gap-1 transition-colors relative",
+                    "flex-1 min-w-[64px] flex flex-col items-center py-3 gap-1 transition-colors relative",
                     activeTab === tab.id ? "text-primary" : "text-text-secondary"
                   )}
                 >
@@ -1122,22 +1163,89 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
 
             <div className="min-h-[300px] p-1">
               {activeTab === 'all' && (
-                <div className="space-y-6 p-4">
-                  <section>
-                    <h3 className="font-bold text-text-primary mb-3">My Photos</h3>
-                    <div className="grid grid-cols-3 gap-2">
-                      {myContent.photos.map(photo => (
-                        <img 
-                          key={photo.id} 
-                          src={photo.url} 
-                          onClick={() => setSelectedMedia({ ...photo, type: 'photo' })}
-                          className="aspect-square object-cover rounded-lg cursor-pointer active:scale-95 transition-transform" 
-                        />
-                      ))}
+                <div className="space-y-6 p-3">
+                  {myContent.photos.length > 0 && (
+                    <section>
+                      <h3 className="font-bold text-text-primary text-xs uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                        <ImageIcon className="w-3.5 h-3.5 text-primary" /> Photos ({myContent.photos.length})
+                      </h3>
+                      <div className="grid grid-cols-3 gap-2">
+                        {myContent.photos.map(photo => (
+                          <img 
+                            key={photo.id} 
+                            src={photo.url} 
+                            onClick={() => setSelectedMedia({ ...photo, type: 'photo' })}
+                            className="aspect-square object-cover rounded-lg cursor-pointer active:scale-95 transition-transform border border-gray-100" 
+                          />
+                        ))}
+                      </div>
+                    </section>
+                  )}
+
+                  {(myContent.videos.length > 0 || myContent.reels.length > 0) && (
+                    <section>
+                      <h3 className="font-bold text-text-primary text-xs uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                        <PlayCircle className="w-3.5 h-3.5 text-primary" /> Videos & Reels ({myContent.videos.length + myContent.reels.length})
+                      </h3>
+                      <div className="grid grid-cols-2 gap-2">
+                        {[...myContent.videos, ...myContent.reels].map((vid: any) => (
+                          <div 
+                            key={vid.id} 
+                            onClick={() => setSelectedMedia({ ...vid, type: vid.videoUrl && vid.type === 'reel' ? 'reel' : 'video' })}
+                            className="relative aspect-video bg-gray-100 overflow-hidden rounded-xl cursor-pointer group shadow-sm border border-gray-100"
+                          >
+                            <img src={vid.thumbnail || avatar} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                            <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+                              <Play className="w-6 h-6 text-white fill-current opacity-80 group-hover:scale-110 transition-transform" />
+                            </div>
+                            <span className="absolute bottom-1 right-2 text-[9px] text-white font-bold bg-black/60 px-1.5 rounded">
+                              {vid.likes || 0} ❤️
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  )}
+
+                  {myContent.links.length > 0 && (
+                    <section>
+                      <h3 className="font-bold text-text-primary text-xs uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                        <Share2 className="w-3.5 h-3.5 text-primary" /> Shared Links & Status ({myContent.links.length})
+                      </h3>
+                      <div className="space-y-2">
+                        {myContent.links.map(link => (
+                          <div 
+                            key={link.id}
+                            onClick={() => setSelectedMedia({ ...link, type: 'link' })}
+                            className="p-3 bg-surface rounded-2xl border border-gray-100 hover:border-primary/30 transition-all cursor-pointer group"
+                          >
+                            <div className="flex items-center justify-between mb-1.5">
+                              <span className="text-[10px] font-black uppercase text-primary tracking-widest flex items-center gap-1">
+                                <Link2 className="w-3 h-3" /> Shared Post
+                              </span>
+                              <span className="text-[10px] font-bold text-text-secondary">
+                                {formatPostTime(link.timestamp)}
+                              </span>
+                            </div>
+                            <p className="text-xs text-text-primary line-clamp-3 leading-relaxed font-medium">
+                              {link.content}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  )}
+
+                  {myContent.photos.length === 0 && myContent.videos.length === 0 && myContent.reels.length === 0 && myContent.links.length === 0 && (
+                    <div className="py-12 text-center text-text-secondary space-y-2">
+                      <Grid className="w-10 h-10 mx-auto text-gray-300" />
+                      <p className="text-xs font-bold uppercase tracking-wider">No posts yet</p>
+                      <p className="text-[11px] text-gray-400">Share photos, videos, or links in the Feed to see them here.</p>
                     </div>
-                  </section>
+                  )}
                 </div>
               )}
+
               {activeTab === 'reels' && (
                 <div className="grid grid-cols-3 gap-1">
                   <div className="aspect-[9/16] bg-surface flex flex-col items-center justify-center gap-2 border-2 border-dashed border-primary/20 rounded-lg cursor-pointer hover:bg-primary/5 transition-colors group">
@@ -1165,6 +1273,7 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
                   ))}
                 </div>
               )}
+
               {activeTab === 'photos' && (
                 <div className="grid grid-cols-3 gap-1">
                   {myContent.photos.map(photo => (
@@ -1181,8 +1290,14 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
                       </div>
                     </div>
                   ))}
+                  {myContent.photos.length === 0 && (
+                    <div className="col-span-3 py-10 text-center text-text-secondary text-xs">
+                      No photos uploaded yet
+                    </div>
+                  )}
                 </div>
               )}
+
               {activeTab === 'videos' && (
                 <div className="grid grid-cols-2 gap-2 p-1">
                   {myContent.videos.map(video => (
@@ -1207,6 +1322,58 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
                       </div>
                     </div>
                   ))}
+                  {myContent.videos.length === 0 && (
+                    <div className="col-span-2 py-10 text-center text-text-secondary text-xs">
+                      No videos uploaded yet
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeTab === 'links' && ( // ← NEW: Dedicated Link Shares Category Tab
+                <div className="p-3 space-y-3">
+                  {myContent.links.map(link => (
+                    <div 
+                      key={link.id}
+                      className="p-4 bg-surface rounded-2xl border border-gray-100 shadow-sm space-y-2"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-black uppercase text-primary tracking-widest flex items-center gap-1.5">
+                          <Link2 className="w-3.5 h-3.5" /> Shared Link
+                        </span>
+                        <span className="text-[10px] font-bold text-text-secondary">
+                          {formatPostTime(link.timestamp)}
+                        </span>
+                      </div>
+                      <p className="text-sm text-text-primary leading-relaxed font-medium whitespace-pre-wrap">
+                        {link.content.split(/(\s+)/).map((part: string, idx: number) => {
+                          if (/^https?:\/\//i.test(part)) {
+                            return (
+                              <a 
+                                key={idx} 
+                                href={part} 
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                className="text-blue-600 underline font-semibold hover:text-blue-800 break-all inline-flex items-center gap-1"
+                              >
+                                {part} <ExternalLink className="w-3 h-3 inline" />
+                              </a>
+                            );
+                          }
+                          return part;
+                        })}
+                      </p>
+                      <div className="flex items-center gap-4 pt-1 border-t border-gray-100/60 text-xs text-text-secondary">
+                        <span className="font-bold flex items-center gap-1">❤️ {link.likes}</span>
+                        <span className="font-bold flex items-center gap-1">💬 {link.comments}</span>
+                      </div>
+                    </div>
+                  ))}
+                  {myContent.links.length === 0 && (
+                    <div className="py-10 text-center text-text-secondary text-xs">
+                      No link shares or text posts yet
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1240,6 +1407,16 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
                   src={selectedMedia.url} 
                   className="max-w-full max-h-full rounded-2xl shadow-2xl object-contain"
                 />
+              ) : selectedMedia.type === 'link' ? ( // ← NEW: Fullscreen viewer for shared links & text
+                <div className="bg-white/10 backdrop-blur-xl p-6 rounded-3xl max-w-sm w-full border border-white/20 text-white space-y-4 shadow-2xl">
+                  <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wider text-white/70">
+                    <Link2 className="w-4 h-4 text-primary" />
+                    <span>Shared Link / Post</span>
+                  </div>
+                  <p className="text-white text-base leading-relaxed font-medium whitespace-pre-wrap">
+                    {selectedMedia.content}
+                  </p>
+                </div>
               ) : (
                 <video 
                   src={selectedMedia.videoUrl} 
@@ -1403,7 +1580,7 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
 
                     <div className="bg-surface p-4 rounded-2xl flex items-center justify-between gap-3 border border-gray-100">
                       <p className="text-xs text-text-secondary truncate flex-1">
-                        https://connectme.app/share/my-content/{selectedMedia.id}
+                        {(typeof window !== 'undefined' ? window.location.origin : 'https://tikring.app')}/share/my-content/{selectedMedia.id} {/* ← CHANGED: Real TikRing URL */}
                       </p>
                       <button 
                         onClick={handleShare}
@@ -1501,21 +1678,18 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
               </div>
 
               <div className="p-4 bg-white rounded-2xl shadow-inner border-4 border-primary/10">
-                <div ref={qrCanvasRef as any}>
+                <div ref={qrCanvasRef as any} className="relative flex items-center justify-center"> {/* ← CHANGED: Relative container for avatar overlay */}
                   <QRCodeCanvas 
                     value={`tikring-user:${phone || 'unknown'}`}
                     size={200}
                     level="H"
                     includeMargin={true}
-                    imageSettings={{
-                      src: avatar || 'https://picsum.photos/seed/me/100',
-                      x: undefined,
-                      y: undefined,
-                      height: 40,
-                      width: 40,
-                      excavate: true,
-                    }}
-                  />
+                  /> {/* ← CHANGED: Render untainted canvas without cross-origin images */}
+                  {avatar && (
+                    <div className="absolute w-10 h-10 rounded-full border-2 border-white shadow-md overflow-hidden bg-white pointer-events-none"> {/* ← NEW: Clean CSS avatar overlay */}
+                      <img src={avatar} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1527,31 +1701,35 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
               <div className="flex gap-3 w-full">
                 <button 
                   onClick={async () => {
-                    const canvas = qrCanvasRef.current?.querySelector('canvas');
-                    if (canvas) {
-                      const url = canvas.toDataURL('image/png');
-                      
-                      if (navigator.share) {
-                        try {
-                          const blob = await (await fetch(url)).blob();
-                          const file = new File([blob], 'connectme-qr.png', { type: 'image/png' });
-                          await navigator.share({
-                            title: 'My ConnectMe QR Code',
-                            text: `Scan this to add me on ConnectMe: ${phone}`,
-                            files: [file]
-                          });
-                        } catch (err) {
+                    try { // ← NEW: Guard against export exceptions
+                      const canvas = qrCanvasRef.current?.querySelector('canvas');
+                      if (canvas) {
+                        const url = canvas.toDataURL('image/png'); // ← CHANGED: Executes safely on untainted canvas
+                        
+                        if (navigator.share) {
+                          try {
+                            const blob = await (await fetch(url)).blob();
+                            const file = new File([blob], 'tikring-qr.png', { type: 'image/png' });
+                            await navigator.share({
+                              title: 'My TikRing QR Code',
+                              text: `Scan this to add me on TikRing: ${phone}`,
+                              files: [file]
+                            });
+                          } catch (err) {
+                            const link = document.createElement('a');
+                            link.download = 'tikring-qr.png';
+                            link.href = url;
+                            link.click();
+                          }
+                        } else {
                           const link = document.createElement('a');
-                          link.download = 'my-connectme-qr.png';
+                          link.download = 'tikring-qr.png';
                           link.href = url;
                           link.click();
                         }
-                      } else {
-                        const link = document.createElement('a');
-                        link.download = 'my-connectme-qr.png';
-                        link.href = url;
-                        link.click();
                       }
+                    } catch (err) {
+                      console.error('Error exporting QR code:', err); // ← NEW
                     }
                   }}
                   className="flex-1 bg-surface py-3 rounded-xl font-bold text-primary flex items-center justify-center gap-2 active:scale-95 transition-transform"
@@ -1561,12 +1739,13 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
                 </button>
                 <button 
                   onClick={async () => {
-                    const shareLink = `https://connectme.app/user/${phone || 'unknown'}`;
+                    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://tikring.app'; // ← NEW
+                    const shareLink = `${origin}/?user=${phone || 'unknown'}`; // ← CHANGED: Real TikRing profile link
                     if (navigator.share) {
                       try {
                         await navigator.share({
-                          title: 'ConnectMe Profile',
-                          text: `Add me on ConnectMe!`,
+                          title: 'TikRing Profile', // ← CHANGED
+                          text: `Add me on TikRing: ${phone}`, // ← CHANGED
                           url: shareLink
                         });
                       } catch (err) {

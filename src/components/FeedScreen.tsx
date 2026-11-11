@@ -38,6 +38,14 @@ export default function FeedScreen({ socket, onlineUsers, isConnected, isConnect
   const [activeTypeFilter, setActiveTypeFilter] = useState<Post['type'] | 'all'>('all');
   const [activeUserFilter, setActiveUserFilter] = useState<string | 'all'>('all');
   const [isFilterSectionOpen, setIsFilterSectionOpen] = useState(false);
+  const [, setTimeTick] = useState(Date.now()); // ← NEW: Live real-time counter tick
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setTimeTick(Date.now()); // ← NEW: Triggers dynamic countdown/elapsed time updates
+    }, 5000);
+    return () => clearInterval(timer);
+  }, []);
 
   const fetchData = useCallback(async () => {
     const [storedPosts, profile] = await Promise.all([
@@ -115,8 +123,12 @@ export default function FeedScreen({ socket, onlineUsers, isConnected, isConnect
   useEffect(() => {
     if (!socket) return;
     
-    const handleNewPost = (post: Post) => {
-      setPosts(prev => [post, ...prev]);
+    const handleNewPost = async (post: Post) => {
+      await savePost(post); // ← NEW: Save other users' real-time posts locally
+      setPosts(prev => {
+        if (prev.some(p => p.id === post.id)) return prev;
+        return [post, ...prev]; // ← CHANGED: Real-time update at top of feed
+      });
     };
     
     socket.on('new_post', handleNewPost);
@@ -202,15 +214,18 @@ export default function FeedScreen({ socket, onlineUsers, isConnected, isConnect
   };
 
   const formatTime = (timestamp: number) => {
-    const diff = Date.now() - timestamp;
-    const mins = Math.floor(diff / 60000);
+    const diff = Math.max(0, Date.now() - timestamp); // ← CHANGED: Real-time dynamic elapsed difference
+    const secs = Math.floor(diff / 1000); // ← NEW: Seconds precision
+    const mins = Math.floor(secs / 60);
     const hours = Math.floor(mins / 60);
     const days = Math.floor(hours / 24);
 
-    if (mins < 1) return 'Just now';
+    if (secs < 15) return 'Just now'; // ← CHANGED
+    if (secs < 60) return `${secs}s ago`; // ← NEW: Real-time seconds countdown
     if (mins < 60) return `${mins}m ago`;
     if (hours < 24) return `${hours}h ago`;
-    return `${days}d ago`;
+    if (days < 7) return `${days}d ago`;
+    return `${Math.floor(days / 7)}w ago`; // ← NEW: Weeks counter
   };
 
   const renderContentWithHashtags = (content: string) => {
@@ -230,6 +245,20 @@ export default function FeedScreen({ socket, onlineUsers, isConnected, isConnect
           >
             {part}
           </span>
+        );
+      }
+      if (/^https?:\/\//i.test(part)) { // ← NEW: Clickable real-time link shares
+        return (
+          <a
+            key={i}
+            href={part}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="text-blue-600 underline font-semibold hover:text-blue-800 break-all"
+          >
+            {part}
+          </a>
         );
       }
       return part;
