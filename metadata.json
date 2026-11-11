@@ -6,6 +6,8 @@
   "background_color": "#3C3489",
   "requestFramePermissions": [
     "camera",
-    "microphone"
+    "microphone",
+    "display-capture",
+    "geolocation"
   ]
 }

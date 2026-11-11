@@ -13,45 +13,159 @@ async function startServer() {
     },
   });
 
-  const PORT = 3000;
+  const portArgIndex = process.argv.indexOf("--port");
+  const cliPort = portArgIndex !== -1 && process.argv[portArgIndex + 1] ? Number(process.argv[portArgIndex + 1]) : null;
+  const PORT = cliPort || Number(process.env.PORT) || 3000;
 
-  // Signaling and Presence
-  const users = new Map();
+  const hostArgIndex = process.argv.indexOf("--host");
+  const HOST = hostArgIndex !== -1 && process.argv[hostArgIndex + 1] ? process.argv[hostArgIndex + 1] : "0.0.0.0";
+
+  // Presence tracking
+  const users = new Map(); // socket.id -> { username, phone }
+  const phoneToSocket = new Map(); // phone -> socket.id
 
   io.on("connection", (socket) => {
     console.log("User connected:", socket.id);
 
-    socket.on("register", (username) => {
-      users.set(socket.id, { username, id: socket.id });
+    socket.on("register", ({ username, phone, statusMessage }) => {
+      users.set(socket.id, { username, phone, statusMessage });
+      if (phone) {
+        phoneToSocket.set(phone, socket.id);
+        socket.join(phone); // Individual room for signaling
+        io.emit("user_status_change", { phone, isOnline: true, statusMessage });
+      }
       io.emit("user_list", Array.from(users.values()));
     });
 
+    socket.on("update_status", ({ statusMessage }) => {
+      const user = users.get(socket.id);
+      if (user) {
+        user.statusMessage = statusMessage;
+        users.set(socket.id, user);
+        if (user.phone) {
+          io.emit("user_status_change", { phone: user.phone, isOnline: true, statusMessage });
+        }
+        io.emit("user_list", Array.from(users.values()));
+      }
+    });
+
     socket.on("disconnect", () => {
+      const user = users.get(socket.id);
+      if (user && user.phone) {
+        phoneToSocket.delete(user.phone);
+        io.emit("user_status_change", { phone: user.phone, isOnline: false });
+        
+        // Notify any active call rooms
+        const rooms = Array.from(socket.rooms);
+        rooms.forEach(room => {
+          if (room.startsWith('call_')) {
+            socket.to(room).emit('peer_disconnected');
+          }
+        });
+      }
       users.delete(socket.id);
       io.emit("user_list", Array.from(users.values()));
       console.log("User disconnected:", socket.id);
     });
 
-    // WebRTC Signaling
-    socket.on("offer", ({ to, offer }) => {
-      socket.to(to).emit("offer", { from: socket.id, offer });
+    // WebRTC Signaling Relay
+    socket.on("join_call", ({ toPhone }) => {
+      const user = users.get(socket.id);
+      if (!user || !user.phone) return;
+
+      const roomName = [user.phone, toPhone].sort().join('_');
+      socket.join(`call_${roomName}`);
+      console.log(`User ${user.phone} joined call room: call_${roomName}`);
+      
+      // Notify the other user that someone joined the call
+      socket.to(toPhone).emit("user_joined_call", { from: user.phone });
     });
 
-    socket.on("answer", ({ to, answer }) => {
-      socket.to(to).emit("answer", { from: socket.id, answer });
+    socket.on("offer", (payload) => {
+      const user = users.get(socket.id);
+      console.log(`Relaying offer from ${user?.phone} to ${payload.to}. Type: ${payload.callType || payload.type || 'unknown'}`);
+      console.log('Offer Payload:', JSON.stringify({ ...payload, offer: 'SDP_HIDDEN' }));
+      socket.to(payload.to).emit("offer", { ...payload, from: user?.phone });
+    });
+
+    socket.on("answer", (payload) => {
+      const user = users.get(socket.id);
+      console.log(`Relaying answer from ${user?.phone} to ${payload.to}`);
+      socket.to(payload.to).emit("answer", { ...payload, from: user?.phone });
     });
 
     socket.on("ice_candidate", ({ to, candidate }) => {
-      socket.to(to).emit("ice_candidate", { from: socket.id, candidate });
+      const user = users.get(socket.id);
+      socket.to(to).emit("ice_candidate", { from: user?.phone, candidate });
     });
 
-    // Chat signaling (for real-time delivery, though storage is local)
-    socket.on("send_message", ({ to, message }) => {
-      socket.to(to).emit("receive_message", { from: socket.id, message });
+    socket.on("end_call", ({ to }) => {
+      const user = users.get(socket.id);
+      if (user && user.phone) {
+        const roomName = [user.phone, to].sort().join('_');
+        socket.leave(`call_${roomName}`);
+        socket.to(to).emit("call_ended");
+      }
+    });
+
+    // Other app features (Chat, Groups, etc.)
+    socket.on("send_message", ({ to, message, isGroup }) => {
+      const sender = users.get(socket.id);
+      if (isGroup) {
+        socket.to(to).emit("receive_message", { from: to, message, senderPhone: sender?.phone });
+      } else {
+        socket.to(to).emit("receive_message", { from: sender?.phone || socket.id, message });
+      }
+    });
+
+    socket.on("delete_message", ({ to, messageId, isGroup }) => {
+      const sender = users.get(socket.id);
+      console.log(`🗑️ Delete request from ${sender?.phone} for msg ${messageId} to ${to} (isGroup: ${isGroup})`);
+      if (isGroup) {
+        io.to(to).emit("delete_message", { messageId, from: to });
+      } else {
+        io.to(to).emit("delete_message", { messageId, from: sender?.phone || socket.id });
+      }
+    });
+
+    socket.on("typing", ({ to }) => {
+      const sender = users.get(socket.id);
+      socket.to(to).emit("typing", { from: sender?.phone || socket.id });
+    });
+
+    socket.on("stop_typing", ({ to }) => {
+      const sender = users.get(socket.id);
+      socket.to(to).emit("stop_typing", { from: sender?.phone || socket.id });
+    });
+
+    socket.on("message_read", ({ to, messageId, chatId }) => {
+      const sender = users.get(socket.id);
+      const payload = { from: sender?.phone || socket.id, messageId, chatId: sender?.phone || chatId };
+      socket.to(to).emit("message_read", payload);
+      if (sender?.phone) {
+        socket.to(sender.phone).emit("message_read", { ...payload, isSelfUpdate: true });
+      }
+    });
+
+    socket.on("friend_request", ({ toPhone, fromUser }) => {
+      const targetSocketId = phoneToSocket.get(toPhone);
+      if (targetSocketId) socket.to(targetSocketId).emit("friend_request_received", fromUser);
+    });
+
+    socket.on("group_invitation", ({ to, group }) => {
+      const targetSocketId = phoneToSocket.get(to);
+      if (targetSocketId) socket.to(targetSocketId).emit("group_invitation", group);
+    });
+
+    socket.on("join_group", (groupId) => {
+      socket.join(groupId);
+    });
+
+    socket.on("create_post", (post) => {
+      socket.broadcast.emit("new_post", post);
     });
   });
 
-  // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -66,9 +180,21 @@ async function startServer() {
     });
   }
 
-  httpServer.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+  httpServer.on("error", (err: any) => {
+    console.error("HTTP server error:", err);
+  });
+
+  httpServer.listen(PORT, HOST, () => {
+    console.log(`Server running on http://${HOST}:${PORT}`);
   });
 }
+
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught Exception:", err);
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled Rejection:", reason);
+});
 
 startServer();
